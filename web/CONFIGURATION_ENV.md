@@ -1,10 +1,14 @@
 # Fichier `.env` — liens et texte à copier-coller
 
+**Ouvrir le fichier dans Cursor :** [**`web/.env`**](.env) → **Ctrl+clic** (ou **Cmd+clic**) sur le lien.
+
+*(Raccourci à la racine du dépôt : [`OPEN_ENV.md`](../OPEN_ENV.md).)*
+
 ## 1. Où configurer les variables
 
 | Où | Lien (cliquable) |
 |----|------------------|
-| **Fichier local du projet** | Ouvre le fichier [`web/.env`](./.env) dans ton éditeur (à la racine du dossier `web`). S’il n’existe pas, copie [`web/.env.example`](./.env.example) et renomme-le en `.env`. |
+| **Fichier local** | [**`web/.env`**](.env) *(Ctrl+clic)* — sinon modèle : [`.env.example`](./.env.example) |
 | **Supabase** (mot de passe base, chaînes de connexion) | [Tableau de bord Supabase](https://supabase.com/dashboard) → choisis ton projet → menu **Project Settings** (engrenage) → [**Database**](https://supabase.com/dashboard/project/_/settings/database) |
 | **Documentation connexion Postgres / Prisma** | [Connecting to Postgres (Supabase)](https://supabase.com/docs/guides/database/connecting-to-postgres) |
 | **Netlify** (production) | [Applications Netlify](https://app.netlify.com) → ton site → **Site configuration** → [**Environment variables**](https://docs.netlify.com/environment-variables/overview/) |

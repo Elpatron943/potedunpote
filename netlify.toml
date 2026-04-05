@@ -1,0 +1,7 @@
+# L’app Next.js est dans web/ : sans ce réglage, Netlify ne build pas Next et sert une 404.
+[build]
+  base = "web"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"

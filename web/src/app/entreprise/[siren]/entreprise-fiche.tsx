@@ -12,8 +12,11 @@ import {
   QUOTE_ACCURACY_LABELS,
   reviewStatusLabel,
 } from "@/lib/review-labels";
-import { getBtpMetierLabel } from "@/lib/btp-metiers";
-import { getPrestationActiviteLabel } from "@/lib/btp-sous-activites";
+import type { SerializedBtpReferentiel } from "@/lib/btp-referentiel-types";
+import {
+  getBtpMetierLabelFromRef,
+  getPrestationActiviteLabel,
+} from "@/lib/btp-referentiel";
 import { formatEurFromCents, formatEurPerSquareMeter, formatEurPerSquareMeterFromCents } from "@/lib/format-money";
 import type { PublicReviewPayload } from "@/lib/reviews-queries";
 import { authorDisplayName } from "@/lib/reviews-queries";
@@ -57,10 +60,13 @@ function formatReviewDate(d: Date): string {
   }).format(d);
 }
 
-function formatPrestationReviewLine(r: PublicReviewPayload): string | null {
+function formatPrestationReviewLine(
+  r: PublicReviewPayload,
+  ref: SerializedBtpReferentiel,
+): string | null {
   if (!r.prestationMetierId || !r.prestationActiviteId) return null;
-  const metier = getBtpMetierLabel(r.prestationMetierId);
-  const act = getPrestationActiviteLabel(r.prestationMetierId, r.prestationActiviteId);
+  const metier = getBtpMetierLabelFromRef(ref, r.prestationMetierId);
+  const act = getPrestationActiviteLabel(ref, r.prestationMetierId, r.prestationActiviteId);
   if (!act) return metier;
   return metier ? `${metier} — ${act}` : act;
 }
@@ -71,12 +77,14 @@ export function EntrepriseFiche({
   myReview,
   isLoggedIn,
   priceStats,
+  btpReferentiel,
 }: {
   detail: EntrepriseDetail;
   publishedReviews: PublicReviewPayload[];
   myReview: { id: string; status: ReviewStatus } | null;
   isLoggedIn: boolean;
   priceStats: PublishedPriceStats | null;
+  btpReferentiel: SerializedBtpReferentiel;
 }) {
   const complementEntries = Object.entries(detail.complements).sort(([a], [b]) =>
     a.localeCompare(b, "fr"),
@@ -356,7 +364,7 @@ export function EntrepriseFiche({
         ) : (
           <ul className="space-y-4">
             {publishedReviews.map((r) => {
-              const prestationLine = formatPrestationReviewLine(r);
+              const prestationLine = formatPrestationReviewLine(r, btpReferentiel);
               return (
               <li
                 key={r.id}
@@ -474,7 +482,7 @@ export function EntrepriseFiche({
             </p>
           ) : (
             <div className="mt-4">
-              <ReviewForm siren={detail.siren} />
+              <ReviewForm siren={detail.siren} referentiel={btpReferentiel} />
             </div>
           )}
         </div>

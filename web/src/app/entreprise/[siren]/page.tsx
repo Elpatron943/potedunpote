@@ -5,6 +5,7 @@ import { getEntrepriseDetail } from "@/lib/entreprise-detail";
 import { getSession } from "@/lib/auth-session";
 import { getPublishedPriceStatsForSiren } from "@/lib/reviews-price-stats";
 import { getPublishedReviewsForSiren, getUserReviewForSiren } from "@/lib/reviews-queries";
+import { getBtpReferentiel, serializeBtpReferentiel } from "@/lib/btp-referentiel";
 import { EntrepriseFiche } from "./entreprise-fiche";
 
 type PageProps = {
@@ -59,11 +60,13 @@ export default async function EntreprisePage({ params }: PageProps) {
     );
   }
 
-  const [publishedReviews, myReview, priceStats] = await Promise.all([
+  const [publishedReviews, myReview, priceStats, btpRef] = await Promise.all([
     getPublishedReviewsForSiren(siren),
     session ? getUserReviewForSiren(session.userId, siren) : Promise.resolve(null),
     getPublishedPriceStatsForSiren(siren),
+    getBtpReferentiel(),
   ]);
+  const btpReferentiel = serializeBtpReferentiel(btpRef);
 
   return (
     <div className="min-h-screen bg-canvas px-4 py-10 sm:px-6">
@@ -82,6 +85,7 @@ export default async function EntreprisePage({ params }: PageProps) {
           myReview={myReview}
           isLoggedIn={session != null}
           priceStats={priceStats}
+          btpReferentiel={btpReferentiel}
         />
       </div>
     </div>

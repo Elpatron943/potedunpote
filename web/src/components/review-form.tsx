@@ -3,8 +3,11 @@
 import { useActionState, useEffect, useMemo, useState } from "react";
 import type { SubmitReviewState } from "@/actions/review";
 import { submitReview } from "@/actions/review";
-import { BTP_METIERS } from "@/lib/btp-metiers";
-import { getSousActivitesForMetier, isPrestationPricedBySurface } from "@/lib/btp-sous-activites";
+import type { SerializedBtpReferentiel } from "@/lib/btp-referentiel-types";
+import {
+  getSousActivitesForMetier,
+  isPrestationPricedBySurface,
+} from "@/lib/btp-referentiel";
 import { formatEurPerSquareMeterFromCents } from "@/lib/format-money";
 
 const initial: SubmitReviewState = { ok: null };
@@ -26,18 +29,24 @@ function parsePreviewSurfaceM2(s: string): number | null {
   return n;
 }
 
-export function ReviewForm({ siren }: { siren: string }) {
+export function ReviewForm({
+  siren,
+  referentiel,
+}: {
+  siren: string;
+  referentiel: SerializedBtpReferentiel;
+}) {
   const [state, formAction, pending] = useActionState(submitReview, initial);
   const [prestationMetier, setPrestationMetier] = useState("");
   const [prestationActivite, setPrestationActivite] = useState("");
   const [amountPaidEuros, setAmountPaidEuros] = useState("");
   const [surfaceM2Input, setSurfaceM2Input] = useState("");
 
-  const sousActivites = getSousActivitesForMetier(prestationMetier);
+  const sousActivites = getSousActivitesForMetier(referentiel, prestationMetier);
   const surfacePrestation =
     prestationMetier !== "" &&
     prestationActivite !== "" &&
-    isPrestationPricedBySurface(prestationMetier, prestationActivite);
+    isPrestationPricedBySurface(referentiel, prestationMetier, prestationActivite);
 
   useEffect(() => {
     setPrestationActivite("");
@@ -120,7 +129,7 @@ export function ReviewForm({ siren }: { siren: string }) {
               className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
             >
               <option value="">—</option>
-              {BTP_METIERS.map((m) => (
+              {referentiel.metiers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.label}
                 </option>

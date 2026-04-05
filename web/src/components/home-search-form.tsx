@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { getSousActivitesForMetier } from "@/lib/btp-sous-activites";
-
 type MetierOpt = { id: string; label: string };
+type PrestationOpt = { id: string; label: string };
 
 type BanMunicipalityProperties = {
   label?: string;
@@ -61,6 +60,7 @@ function asStringArray(v: string[] | undefined): string[] {
 
 export function HomeSearchForm({
   metiers,
+  prestationsByMetierId,
   defaultMetier,
   defaultLoc,
   defaultRge,
@@ -69,6 +69,7 @@ export function HomeSearchForm({
   defaultEntreprise,
 }: {
   metiers: MetierOpt[];
+  prestationsByMetierId: Record<string, PrestationOpt[]>;
   defaultMetier: string;
   defaultLoc: string;
   defaultRge: boolean;
@@ -89,7 +90,10 @@ export function HomeSearchForm({
   const [metier, setMetier] = useState(defaultMetier);
   const [acts, setActs] = useState<string[]>(() => asStringArray(defaultActs));
 
-  const sousActivites = useMemo(() => getSousActivitesForMetier(metier), [metier]);
+  const sousActivites = useMemo(
+    () => prestationsByMetierId[metier] ?? [],
+    [metier, prestationsByMetierId],
+  );
 
   const [locDisplay, setLocDisplay] = useState(defaultLoc);
   const [locSubmit, setLocSubmit] = useState(defaultLoc);
@@ -249,7 +253,9 @@ export function HomeSearchForm({
                   onChange={(e) => {
                     const next = e.target.value;
                     setMetier(next);
-                    const allowed = new Set(getSousActivitesForMetier(next).map((a) => a.id));
+                    const allowed = new Set(
+                      (prestationsByMetierId[next] ?? []).map((a) => a.id),
+                    );
                     setActs((prev) => asStringArray(prev).filter((id) => allowed.has(id)));
                   }}
                   className="select-home w-full cursor-pointer rounded-2xl border border-ink/10 bg-canvas/80 py-3.5 pl-4 pr-4 text-base text-ink shadow-sm transition focus:border-accent focus:outline-none focus:ring-4 focus:ring-[var(--accent-glow)] dark:border-white/10 dark:bg-canvas-muted/50"

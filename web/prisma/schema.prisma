@@ -96,6 +96,27 @@ model ChatbotLog {
   @@index([clientSessionId])
 }
 
+/// Référentiel « type d’artisan » (table `BtpMetier` Supabase).
+model BtpMetier {
+  id        String          @id
+  label     String
+  codeNaf   String
+  sortOrder Int             @default(0)
+  prestations BtpPrestation[]
+}
+
+/// Prestations précises par métier (`BtpPrestation` Supabase).
+model BtpPrestation {
+  id              String    @id
+  metierId        String
+  metier          BtpMetier @relation(fields: [metierId], references: [id], onDelete: Cascade)
+  label           String
+  pricedBySurface Boolean   @default(false)
+  sortOrder       Int       @default(0)
+
+  @@index([metierId])
+}
+
 /// Compte revendiqué par un artisan (lié au SIREN) — options premium Stripe plus tard
 model ArtisanProfile {
   id           String    @id @default(cuid())
@@ -111,7 +132,7 @@ model ArtisanProfile {
   servesParticuliers Boolean @default(true)
   /// Clientèle : professionnels / entreprises
   servesProfessionnels Boolean @default(false)
-  /// Sous-activités cochées par famille métier : { "plomberie": ["robinetterie", ...], ... } (ids stables, voir `btp-sous-activites.ts`)
+  /// Sous-activités cochées par famille métier : { "plomberie": ["robinetterie", ...], ... } (ids stables, voir `BtpPrestation` / seed)
   sousActivitesSelection Json?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -131,9 +152,9 @@ model Review {
   availability  AvailabilityRating?
   paymentType   PaymentType?
   quoteVsPaid   QuoteAccuracy?
-  /// Famille métier de la prestation réalisée (id `BTP_METIERS`).
+  /// Famille métier de la prestation réalisée (id `BtpMetier`).
   prestationMetierId   String?
-  /// Sous-activité réalisée (id stable `btp-sous-activites.ts`).
+  /// Sous-activité réalisée (id stable `BtpPrestation`).
   prestationActiviteId String?
   /// Montant total payé TTC ou principal, en centimes d’euro (optionnel).
   amountPaidCents      Int?

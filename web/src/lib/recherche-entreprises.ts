@@ -1,4 +1,4 @@
-import { getBtpMetier } from "@/lib/btp-metiers";
+import { getBtpMetier } from "@/lib/btp-referentiel";
 
 const ENTREPRISES_SEARCH_BASE = "https://recherche-entreprises.api.gouv.fr";
 
@@ -183,7 +183,7 @@ export async function searchEntreprisesBtp(
   /** Uniquement les entreprises signalées RGE dans les données. */
   rgeOnly = false,
 ): Promise<SearchEntreprisesResult> {
-  const metier = getBtpMetier(metierId);
+  const metier = await getBtpMetier(metierId);
   if (!metier) {
     return { ok: false, error: "Type d’artisan inconnu." };
   }

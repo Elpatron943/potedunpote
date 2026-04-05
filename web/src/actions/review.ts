@@ -2,8 +2,12 @@
 
 import { createId } from "@paralleldrive/cuid2";
 import { revalidatePath } from "next/cache";
-import { getBtpMetier } from "@/lib/btp-metiers";
-import { isPrestationPricedBySurface, isValidPrestationPair } from "@/lib/btp-sous-activites";
+import {
+  getBtpMetierFromRef,
+  getBtpReferentiel,
+  isPrestationPricedBySurface,
+  isValidPrestationPair,
+} from "@/lib/btp-referentiel";
 import type {
   AvailabilityRating,
   DeadlinesKept,
@@ -120,13 +124,15 @@ export async function submitReview(
     };
   }
 
+  const btpRef = await getBtpReferentiel();
+
   let prestationMetierId: string | null = null;
   let prestationActiviteId: string | null = null;
   if (metierStr !== "" && activiteStr !== "") {
-    if (!getBtpMetier(metierStr)) {
+    if (!getBtpMetierFromRef(btpRef, metierStr)) {
       return { ok: false, error: "Famille métier invalide." };
     }
-    if (!isValidPrestationPair(metierStr, activiteStr)) {
+    if (!isValidPrestationPair(btpRef, metierStr, activiteStr)) {
       return { ok: false, error: "Cette prestation ne correspond pas au métier choisi." };
     }
     prestationMetierId = metierStr;
@@ -151,7 +157,7 @@ export async function submitReview(
         error: "Pour indiquer une surface, choisis d’abord une prestation (métier + type).",
       };
     }
-    if (!isPrestationPricedBySurface(prestationMetierId, prestationActiviteId)) {
+    if (!isPrestationPricedBySurface(btpRef, prestationMetierId, prestationActiviteId)) {
       return {
         ok: false,
         error: "Cette prestation n’est pas proposée au prix au m² : retire la surface ou change de prestation.",

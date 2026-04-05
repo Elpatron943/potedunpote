@@ -52,6 +52,9 @@ Les fichiers SQL historiques restent dans **`web/prisma/migrations/`** (référe
 **Table `ChatbotLog`** (journal du widget « Bot de ton pote ») : appliquer le script  
 [`web/prisma/migrations/20260405120000_chatbot_log/migration.sql`](./prisma/migrations/20260405120000_chatbot_log/migration.sql) dans Supabase → **SQL Editor** si elle n’existe pas encore. Aucune image n’est stockée ; le texte utilisateur et la réponse du modèle sont enregistrés pour analyse / stats.
 
+**Tables `BtpMetier` et `BtpPrestation`** (référentiel « type d’artisan » + prestations précises, utilisé par la recherche, les avis et les filtres) : appliquer  
+[`web/prisma/migrations/20260405140000_btp_referentiel/migration.sql`](./prisma/migrations/20260405140000_btp_referentiel/migration.sql). L’app lit ces tables via `getBtpReferentiel()` (cache ~1 h) ; si elles sont absentes ou vides, une **copie embarquée** (`btp-referentiel-seed.ts`) prend le relais avec un avertissement dans les logs serveur.
+
 ---
 
 ## 5. RLS (Row Level Security)

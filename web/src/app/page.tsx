@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { HomeSearchForm } from "@/components/home-search-form";
-import { getSousActivitesForMetier, filterSousActiviteIdsForMetier } from "@/lib/btp-sous-activites";
 import { getSirensWithDeclaredSousActivites } from "@/lib/artisan-sous-activites-search";
-import { BTP_METIERS } from "@/lib/btp-metiers";
+import {
+  filterSousActiviteIdsForMetier,
+  getBtpReferentiel,
+  getSousActivitesForMetier,
+} from "@/lib/btp-referentiel";
 import { getVerifiedRegisteredSirens } from "@/lib/artisan-verified-sirens";
 import { searchEntreprisesBtp, searchEntreprisesDirect } from "@/lib/recherche-entreprises";
 import { getPublishedReviewAggregatesBySiren } from "@/lib/reviews-aggregate";
@@ -73,6 +76,7 @@ function formatDateCreation(iso: string | null): string | null {
 
 export default async function HomePage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const btpRef = await getBtpReferentiel();
   const directEntreprise = (sp.entreprise ?? "").trim();
   const shouldDirectSearch = directEntreprise.length > 0;
   const metierId = (sp.metier ?? "").trim();
@@ -81,7 +85,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   const rgeOnly = parseRgeParam(sp.rge);
   const validatedActs = shouldDirectSearch
     ? []
-    : filterSousActiviteIdsForMetier(metierId, parseActParam(sp.act));
+    : filterSousActiviteIdsForMetier(btpRef, metierId, parseActParam(sp.act));
   const minStars = parseMinStarsParam(sp.stars);
   const apiPerPage = minStars != null ? 25 : 12;
 
@@ -216,7 +220,8 @@ export default async function HomePage({ searchParams }: PageProps) {
             </div>
 
             <HomeSearchForm
-              metiers={BTP_METIERS.map((m) => ({ id: m.id, label: m.label }))}
+              metiers={btpRef.metiers.map((m) => ({ id: m.id, label: m.label }))}
+              prestationsByMetierId={btpRef.prestationsByMetierId}
               defaultMetier={metierId}
               defaultLoc={loc}
               defaultRge={rgeOnly}
@@ -336,7 +341,7 @@ export default async function HomePage({ searchParams }: PageProps) {
                   {validatedActs.length > 0 && (
                     <ul className="flex flex-wrap gap-2 text-xs text-ink-soft">
                       {validatedActs.map((id) => {
-                        const label = getSousActivitesForMetier(metierId).find((a) => a.id === id)
+                        const label = getSousActivitesForMetier(btpRef, metierId).find((a) => a.id === id)
                           ?.label;
                         if (!label) return null;
                         return (

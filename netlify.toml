@@ -1,4 +1,10 @@
 # L’app Next.js est dans web/ : sans ce réglage, Netlify ne build pas Next et sert une 404.
+#
+# Base PostgreSQL : Supabase (ou autre). Dans Netlify → Environment variables, définir au minimum :
+#   DATABASE_URL  = URI « Transaction pooler » (port 6543) + ?pgbouncer=true si indiqué
+#   DIRECT_URL    = URI « Direct connection » (port 5432) — pour Prisma Migrate
+#   AUTH_SECRET   = chaîne longue et aléatoire
+#
 [build]
   base = "web"
   command = "npm run build"

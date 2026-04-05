@@ -427,13 +427,12 @@ export function formatRepairWizardForPrompt(answers: Record<string, string>): st
   return lines.join("\n");
 }
 
-export type RepairInterventionChoice = "diy" | "artisan" | "sav";
+export type RepairInterventionChoice = "artisan" | "sav";
 
 export const REPAIR_INTERVENTION_OPTIONS: {
   id: RepairInterventionChoice;
   label: string;
 }[] = [
-  { id: "diy", label: "Guidage pas-à-pas DIY (avec limites de sécurité)" },
   { id: "artisan", label: "Mise en relation — recherche d’un artisan sur le site" },
   { id: "sav", label: "Déclaration sinistre / SAV fabricant — quelles démarches" },
 ];

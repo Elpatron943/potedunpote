@@ -51,6 +51,7 @@ type Phase =
   | "repair_wizard"
   | "repair_photo"
   | "loading_repair_mid"
+  | "loading_repair_article"
   | "repair_intervention"
   | "loading_repair_closure"
   | "done";
@@ -62,7 +63,7 @@ const CHOICES: { id: ChoiceId; label: string }[] = [
 ];
 
 const FALLBACK_REPAIR_MID =
-  "J’ai bien reçu ton parcours (diagnostic, urgence, cause, réparabilité). Sans photo, je ne peux qu’émettre des pistes générales : vérifie les coupures / disjoncteurs si c’est de l’électricité, coupe l’eau en cas de fuite majeure, et fais appel à un pro en cas de doute sur le gaz ou la sécurité. Choisis ci-dessous comment tu veux poursuivre.";
+  "Synthèse (fallback) : contexte issu du questionnaire uniquement — zone / symptômes à préciser sur place ; coupure eau ou électricité si danger évident ; faire appel à un pro pour gaz, structure ou doute sérieux. Une fiche complète est générée sur Conseils quand c’est possible.";
 
 const DIY_KIND_OPTIONS: { id: DiyProjectKind; label: string; hint: string }[] = [
   {
@@ -95,7 +96,7 @@ function replyForChoice(id: ChoiceId): { paragraphs: string[]; cta?: { href: str
       return {
         paragraphs: [
           "Le parcours DIY : nature du projet (installation, rénovation ou réparation), corps de métier (référentiel), puis 7 niveaux de QCM (périmètre, contraintes, matériaux, outillage, réglementation, budget, profil). Même parcours = même fiche conseil ; un choix différent = nouvel article.",
-          "Le parcours « J’ai quelque chose à réparer » dans le bot ne crée pas de fiche Conseils : c’est un diagnostic et des pistes sans enregistrement d’article.",
+          "Le parcours « J’ai quelque chose à réparer » : synthèse dans le bot et fiche réparation enregistrée sur Conseils (même principe de déduplication que le DIY).",
           "Tu peux aussi t’inspirer des avis et des fiches pros sur le site pour comparer avant de te lancer.",
         ],
         cta: { href: "/", label: "Parcourir le site" },
@@ -103,7 +104,7 @@ function replyForChoice(id: ChoiceId): { paragraphs: string[]; cta?: { href: str
     case "repair":
       return {
         paragraphs: [
-          "Le parcours réparation : QCM à branches définies dans le code (précisions selon eau / élec / chauffage, parcours raccourci si urgence sécurité), puis photo optionnelle et orientation DIY / artisan / SAV.",
+          "Le parcours réparation : QCM dynamique, photo optionnelle, synthèse courte dans le bot puis fiche réparation complète sur Conseils ; ensuite orientation artisan ou SAV.",
           "Pour dépannage d’urgence (eau, gaz, électricité dangereuse), privilégie toujours la sécurité et un professionnel.",
         ],
         cta: { href: "/", label: "Trouver un artisan" },
@@ -148,6 +149,8 @@ export function SiteChatbot() {
   const [aiReply, setAiReply] = useState<string | null>(null);
   const [repairWizardAnswers, setRepairWizardAnswers] = useState<Record<string, string>>({});
   const [repairMidReply, setRepairMidReply] = useState<string | null>(null);
+  const [repairArticle, setRepairArticle] = useState<{ slug: string; title: string } | null>(null);
+  const [repairArticleError, setRepairArticleError] = useState<string | null>(null);
   const [repairClosureChoice, setRepairClosureChoice] =
     useState<RepairInterventionChoice | null>(null);
   const [finalReply, setFinalReply] = useState<string | null>(null);
@@ -174,6 +177,8 @@ export function SiteChatbot() {
     setAiReply(null);
     setRepairWizardAnswers({});
     setRepairMidReply(null);
+    setRepairArticle(null);
+    setRepairArticleError(null);
     setRepairClosureChoice(null);
     setFinalReply(null);
     setPhotoFile(null);
@@ -193,6 +198,8 @@ export function SiteChatbot() {
       setChoice("repair");
       setRepairWizardAnswers({});
       setRepairMidReply(null);
+      setRepairArticle(null);
+      setRepairArticleError(null);
       setRepairClosureChoice(null);
       setFinalReply(null);
       setPhotoFile(null);
@@ -352,6 +359,9 @@ export function SiteChatbot() {
     if (!t) return;
     setPhase("loading_repair_mid");
     setRepairMidReply(null);
+    setRepairArticle(null);
+    setRepairArticleError(null);
+    let mid = FALLBACK_REPAIR_MID;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -364,13 +374,43 @@ export function SiteChatbot() {
         }),
       });
       const reply = await parseReply(res);
-      setRepairMidReply(reply ?? FALLBACK_REPAIR_MID);
+      mid = reply ?? FALLBACK_REPAIR_MID;
+      setRepairMidReply(mid);
     } catch {
       setRepairMidReply(FALLBACK_REPAIR_MID);
+      mid = FALLBACK_REPAIR_MID;
+    }
+    setPhase("loading_repair_article");
+    try {
+      const artRes = await fetch("/api/repair-article", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wizardAnswers: repairWizardAnswers,
+          priorAnalysis: mid,
+          usedVision: false,
+          clientSessionId,
+        }),
+      });
+      const artData = (await artRes.json()) as {
+        error?: string;
+        slug?: string;
+        title?: string;
+      };
+      if (artRes.ok && artData.slug && artData.title) {
+        setRepairArticle({ slug: artData.slug, title: artData.title });
+        setRepairArticleError(null);
+      } else {
+        setRepairArticle(null);
+        setRepairArticleError(artData.error ?? "Fiche Conseils non créée pour le moment.");
+      }
+    } catch {
+      setRepairArticle(null);
+      setRepairArticleError("Erreur réseau lors de la création de la fiche.");
     } finally {
       setPhase("repair_intervention");
     }
-  }, [repairWizardExplanation, clientSessionId]);
+  }, [repairWizardExplanation, repairWizardAnswers, clientSessionId]);
 
   const finishRepairWithPhoto = useCallback(async () => {
     const t = repairWizardExplanation();
@@ -382,6 +422,9 @@ export function SiteChatbot() {
     }
     setPhase("loading_repair_mid");
     setRepairMidReply(null);
+    setRepairArticle(null);
+    setRepairArticleError(null);
+    let mid = FALLBACK_REPAIR_MID;
     try {
       const { base64, mimeType } = await fileToBase64Payload(photoFile);
       const res = await fetch("/api/chat", {
@@ -396,13 +439,43 @@ export function SiteChatbot() {
         }),
       });
       const reply = await parseReply(res);
-      setRepairMidReply(reply ?? FALLBACK_REPAIR_MID);
+      mid = reply ?? FALLBACK_REPAIR_MID;
+      setRepairMidReply(mid);
     } catch {
       setRepairMidReply(FALLBACK_REPAIR_MID);
+      mid = FALLBACK_REPAIR_MID;
+    }
+    setPhase("loading_repair_article");
+    try {
+      const artRes = await fetch("/api/repair-article", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wizardAnswers: repairWizardAnswers,
+          priorAnalysis: mid,
+          usedVision: true,
+          clientSessionId,
+        }),
+      });
+      const artData = (await artRes.json()) as {
+        error?: string;
+        slug?: string;
+        title?: string;
+      };
+      if (artRes.ok && artData.slug && artData.title) {
+        setRepairArticle({ slug: artData.slug, title: artData.title });
+        setRepairArticleError(null);
+      } else {
+        setRepairArticle(null);
+        setRepairArticleError(artData.error ?? "Fiche Conseils non créée pour le moment.");
+      }
+    } catch {
+      setRepairArticle(null);
+      setRepairArticleError("Erreur réseau lors de la création de la fiche.");
     } finally {
       setPhase("repair_intervention");
     }
-  }, [repairWizardExplanation, photoFile, clientSessionId]);
+  }, [repairWizardExplanation, repairWizardAnswers, photoFile, clientSessionId]);
 
   const submitRepairClosure = useCallback(
     async (ic: RepairInterventionChoice) => {
@@ -585,7 +658,12 @@ export function SiteChatbot() {
                     </Bubble>
                   )}
 
-                  {["repair_photo", "repair_intervention", "loading_repair_closure"].includes(phase) &&
+                  {[
+                    "repair_photo",
+                    "repair_intervention",
+                    "loading_repair_closure",
+                    "loading_repair_article",
+                  ].includes(phase) &&
                     validateRepairWizardAnswers(repairWizardAnswers) && (
                       <>
                         <Bubble role="user">
@@ -599,8 +677,8 @@ export function SiteChatbot() {
                             <Bubble role="assistant">
                               <p>
                                 Tu peux <strong className="font-medium text-ink">ajouter une photo</strong> pour
-                                affiner l’analyse — c’est optionnel. Rien n’est enregistré sur nos serveurs : la
-                                photo sert uniquement à cette analyse en direct.
+                                affiner la synthèse — c’est optionnel. La photo sert à l’analyse et à la fiche
+                                Conseils ; elle n’est pas conservée comme fichier après l’échange.
                               </p>
                             </Bubble>
                             <div className="space-y-2 rounded-xl border border-dashed border-ink/15 bg-canvas-muted/20 p-3 dark:border-white/15">
@@ -653,6 +731,15 @@ export function SiteChatbot() {
                           </>
                         )}
 
+                        {phase === "loading_repair_article" && (
+                          <Bubble role="assistant">
+                            <LoadingLine />
+                            <p className="mt-2 text-xs text-ink-soft">
+                              Rédaction de la fiche réparation sur Conseils (contexte complet)…
+                            </p>
+                          </Bubble>
+                        )}
+
                         {(phase === "repair_intervention" || phase === "loading_repair_closure") && (
                           <>
                             <Bubble role="assistant">
@@ -665,6 +752,21 @@ export function SiteChatbot() {
                                     {p}
                                   </p>
                                 ))}
+                                {repairArticle && (
+                                  <p className="mt-3 rounded-lg border border-teal-700/20 bg-teal-700/5 px-2.5 py-2 text-xs dark:border-teal-500/25 dark:bg-teal-500/10">
+                                    <span className="font-semibold text-ink">Fiche complète : </span>
+                                    <Link
+                                      href={`/conseils/${repairArticle.slug}`}
+                                      className="font-medium text-accent underline-offset-2 hover:underline"
+                                      onClick={() => setOpen(false)}
+                                    >
+                                      {repairArticle.title}
+                                    </Link>
+                                  </p>
+                                )}
+                                {repairArticleError && (
+                                  <p className="mt-2 text-xs text-warm">{repairArticleError}</p>
+                                )}
                                 <p className="mt-3 text-xs font-semibold text-ink">
                                   Parcours 5 — Comment veux-tu poursuivre ?
                                 </p>
@@ -714,17 +816,6 @@ export function SiteChatbot() {
                             onClick={() => setOpen(false)}
                           >
                             Recherche d’artisan
-                          </Link>
-                        </p>
-                      )}
-                      {repairClosureChoice === "diy" && (
-                        <p className="mt-2">
-                          <Link
-                            href="/conseils"
-                            className="inline-flex items-center justify-center rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-md shadow-teal-950/25 transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-teal-600 dark:hover:bg-teal-500"
-                            onClick={() => setOpen(false)}
-                          >
-                            Voir les conseils DIY
                           </Link>
                         </p>
                       )}

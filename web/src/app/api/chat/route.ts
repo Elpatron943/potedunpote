@@ -31,32 +31,24 @@ Règles :
 - Indique clairement que la photo n’est pas enregistrée sur le site : elle sert uniquement à l’analyse en direct pour l’aider.
 - 3 à 6 phrases au total.`;
 
-const SYSTEM_REPAIR_TEXT = `Tu es « Bot de ton pote », assistant pour identifier des pannes et proposer des pistes de réparation (bricolage, habitat).
+const SYSTEM_REPAIR_TEXT = `Tu es « Bot de ton pote », assistant pour la phase « synthèse » avant rédaction d’une fiche réparation sur le site.
+
+Règles :
+- Réponds en français, ton clair et factuel.
+- L’utilisateur a rempli un questionnaire (diagnostic, urgence, cause, réparabilité) : il est dans le message. Tu n’as PAS de photo.
+- Ne rédige PAS un tutoriel pas-à-pas ni un long guide : uniquement une SYNTHÈSE structurée et courte pour alimenter une fiche ensuite.
+- Couvre sous forme de listes ou courts paragraphes : zone / objet concerné, symptômes ou indices principaux, hypothèses prudentes, rappel urgence-sécurité si pertinent, ce qui manque encore pour conclure.
+- Longueur cible : environ 120 à 280 mots. Pas de liste d’étapes numérotées de réparation détaillée.`;
+
+const SYSTEM_REPAIR_VISION = `Tu es « Bot de ton pote », assistant pour la phase « synthèse » après lecture d’une photo (non stockée) dans un cas de réparation / bricolage.
 
 Règles :
 - Réponds en français.
-- L’utilisateur a rempli un questionnaire structuré (diagnostic, urgence, cause, réparabilité) : tu le trouveras dans le message utilisateur.
-- Tu n’as pas de photo à ce stade (analyse texte seule). Croise le questionnaire avec des hypothèses prudentes, des étapes de vérif, et quand appeler un pro.
-- Rappelle les limites du conseil à distance ; pas de diagnostic médical ni gaz / électricité dangereuse sans professionnel si doute.
-- Structure en court paragraphes ou puces si utile.`;
-
-const SYSTEM_REPAIR_VISION = `Tu es « Bot de ton pote », assistant pour analyser une photo dans le cadre d’un problème de réparation / bricolage.
-
-Règles :
-- Réponds en français.
-- L’utilisateur a aussi rempli un questionnaire structuré : intègre-le avec ce que tu vois sur la photo.
-- Décris ce que tu vois en lien avec le problème, ce qui semble plausible comme cause, et des pistes concrètes (outils, étapes, précautions).
-- Si la photo ne permet pas de conclure, dis-le honnêtement.
-- Rappelle que ce n’est pas un diagnostic de sécurité garanti ; pour gaz, électricité haute tension ou structure, oriente vers un pro.
-- La photo n’est pas stockée ; elle sert uniquement à cette analyse.`;
-
-const SYSTEM_REPAIR_CLOSURE_DIY = `Tu es « Bot de ton pote ». L’utilisateur a choisi un guidage DIY après diagnostic.
-
-Règles :
-- Réponds en français, ton clair.
-- Tu reçois le questionnaire + une analyse intermédiaire déjà donnée : donne une clôture orientée « pas-à-pas » DIY : ordre des vérifications, précautions sécurité, quand s’arrêter et appeler un pro.
-- Ne promets pas que la réparation suffira ; reste prudent sur gaz, électricité, structure, étanchéité critique.
-- Court à moyen : listes courtes possibles.`;
+- L’utilisateur a rempli un questionnaire structuré : croise-le avec ce que tu VOIS sur la photo.
+- Ne rédige PAS un tutoriel pas-à-pas : uniquement une SYNTHÈSE pour alimenter une fiche réparation complète ailleurs sur le site.
+- Extrais : type d’objet ou zone visible, éléments identifiables, signes de défaut ou d’usure visibles, cohérence avec le questionnaire, limites de ce qu’on peut affirmer depuis l’image.
+- Rappel bref : ce n’est pas un diagnostic de sécurité garanti ; gaz / électricité / structure → pro si doute.
+- Longueur cible : environ 120 à 280 mots.`;
 
 const SYSTEM_REPAIR_CLOSURE_ARTISAN = `Tu es « Bot de ton pote ». L’utilisateur veut être orienté vers un professionnel.
 
@@ -107,8 +99,7 @@ function parseBody(body: unknown): {
       : null;
   const repairClosure = o.repairClosure === true;
   const ic = o.interventionChoice;
-  const interventionChoice =
-    ic === "diy" || ic === "artisan" || ic === "sav" ? ic : null;
+  const interventionChoice = ic === "artisan" || ic === "sav" ? ic : null;
   const priorAnalysis =
     typeof o.priorAnalysis === "string" ? o.priorAnalysis.trim() : "";
   return {
@@ -168,7 +159,7 @@ export async function POST(request: Request) {
       if (repairClosure) {
         if (!interventionChoice) {
           return NextResponse.json(
-            { error: "interventionChoice requis (diy, artisan ou sav)" },
+            { error: "interventionChoice requis (artisan ou sav)" },
             { status: 400 },
           );
         }
@@ -177,16 +168,13 @@ export async function POST(request: Request) {
         }
         const priorSlice = priorAnalysis.slice(0, MAX_PRIOR_ANALYSIS);
         const closureSystem: Record<RepairInterventionChoice, string> = {
-          diy: SYSTEM_REPAIR_CLOSURE_DIY,
           artisan: SYSTEM_REPAIR_CLOSURE_ARTISAN,
           sav: SYSTEM_REPAIR_CLOSURE_SAV,
         };
         const orientationLabel =
-          interventionChoice === "diy"
-            ? "Guidage pas-à-pas DIY"
-            : interventionChoice === "artisan"
-              ? "Mise en relation / recherche d’un artisan sur le site"
-              : "Déclaration sinistre / SAV fabricant";
+          interventionChoice === "artisan"
+            ? "Mise en relation / recherche d’un artisan sur le site"
+            : "Déclaration sinistre / SAV fabricant";
         const userBlock =
           priorSlice.length > 0
             ? `Réponses au questionnaire structuré :\n\n${explanation}\n\n---\nAnalyse déjà communiquée (texte ou photo) :\n"""${priorSlice}"""\n\nOrientation finale demandée par l’utilisateur : ${orientationLabel}.`
@@ -236,7 +224,7 @@ export async function POST(request: Request) {
         }
 
         const dataUrl = `data:${mimeType};base64,${imageBase64}`;
-        const userText = `Voici la description du problème par l’utilisateur :\n\n"""${explanation}"""\n\nAnalyse la photo fournie pour l’aider à identifier le problème et comment réparer ou quoi faire ensuite.`;
+        const userText = `Voici le questionnaire et le contexte :\n\n"""${explanation}"""\n\nDécris ce que tu observes sur la photo pour une synthèse courte (pas de tutoriel pas-à-pas dans ta réponse).`;
 
         const completion = await openai.chat.completions.create({
           model,
@@ -250,8 +238,8 @@ export async function POST(request: Request) {
               ],
             },
           ],
-          max_tokens: 900,
-          temperature: 0.45,
+          max_tokens: 550,
+          temperature: 0.4,
         });
 
         const text = completion.choices[0]?.message?.content?.trim() ?? "";
@@ -281,11 +269,11 @@ export async function POST(request: Request) {
             { role: "system", content: SYSTEM_REPAIR_TEXT },
             {
               role: "user",
-              content: `Problème décrit (pas de photo) :\n\n"""${explanation}"""`,
+              content: `Questionnaire et contexte (pas de photo) :\n\n"""${explanation}"""`,
             },
           ],
-          max_tokens: 900,
-          temperature: 0.45,
+          max_tokens: 550,
+          temperature: 0.4,
         });
 
         const text = completion.choices[0]?.message?.content?.trim() ?? "";

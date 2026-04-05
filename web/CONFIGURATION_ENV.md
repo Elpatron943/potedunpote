@@ -49,6 +49,9 @@ Déclare les **mêmes** variables : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUP
 
 Les fichiers SQL historiques restent dans **`web/prisma/migrations/`** (référence). Les nouvelles évolutions se font dans le **SQL Editor** Supabase ou via le dashboard. Plus besoin de `npx prisma migrate` pour l’app.
 
+**Table `ChatbotLog`** (journal du widget « Bot de ton pote ») : appliquer le script  
+[`web/prisma/migrations/20260405120000_chatbot_log/migration.sql`](./prisma/migrations/20260405120000_chatbot_log/migration.sql) dans Supabase → **SQL Editor** si elle n’existe pas encore. Aucune image n’est stockée ; le texte utilisateur et la réponse du modèle sont enregistrés pour analyse / stats.
+
 ---
 
 ## 5. RLS (Row Level Security)

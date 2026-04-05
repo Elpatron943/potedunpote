@@ -10,6 +10,13 @@ import {
   type SVGProps,
 } from "react";
 
+function newClientSessionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 type ChoiceId = "artisan" | "diy" | "repair";
 
 type Phase =
@@ -98,6 +105,7 @@ export function SiteChatbot() {
   const [finalReply, setFinalReply] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [clientSessionId, setClientSessionId] = useState(newClientSessionId);
 
   const reset = useCallback(() => {
     setPhase("intro");
@@ -108,6 +116,7 @@ export function SiteChatbot() {
     setFinalReply(null);
     setPhotoFile(null);
     setPhotoError(null);
+    setClientSessionId(newClientSessionId());
   }, []);
 
   const pick = useCallback(async (id: ChoiceId) => {
@@ -129,7 +138,7 @@ export function SiteChatbot() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choiceId: id }),
+        body: JSON.stringify({ choiceId: id, clientSessionId }),
       });
       const reply = await parseReply(res);
       setAiReply(reply);
@@ -138,7 +147,7 @@ export function SiteChatbot() {
     } finally {
       setPhase("done");
     }
-  }, []);
+  }, [clientSessionId]);
 
   const submitRepairExplanation = useCallback(async () => {
     const t = repairExplanation.trim();
@@ -149,7 +158,7 @@ export function SiteChatbot() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choiceId: "repair", explanation: t }),
+        body: JSON.stringify({ choiceId: "repair", explanation: t, clientSessionId }),
       });
       const reply = await parseReply(res);
       setRepairAckReply(reply ?? FALLBACK_REPAIR_ACK);
@@ -158,7 +167,7 @@ export function SiteChatbot() {
     } finally {
       setPhase("repair_photo");
     }
-  }, [repairExplanation]);
+  }, [repairExplanation, clientSessionId]);
 
   const finishRepairSkipPhoto = useCallback(async () => {
     const t = repairExplanation.trim();
@@ -169,7 +178,12 @@ export function SiteChatbot() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choiceId: "repair", explanation: t, skipPhoto: true }),
+        body: JSON.stringify({
+          choiceId: "repair",
+          explanation: t,
+          skipPhoto: true,
+          clientSessionId,
+        }),
       });
       const reply = await parseReply(res);
       setFinalReply(reply);
@@ -178,7 +192,7 @@ export function SiteChatbot() {
     } finally {
       setPhase("done");
     }
-  }, [repairExplanation]);
+  }, [repairExplanation, clientSessionId]);
 
   const finishRepairWithPhoto = useCallback(async () => {
     const t = repairExplanation.trim();
@@ -200,6 +214,7 @@ export function SiteChatbot() {
           explanation: t,
           imageBase64: base64,
           mimeType,
+          clientSessionId,
         }),
       });
       const reply = await parseReply(res);
@@ -209,7 +224,7 @@ export function SiteChatbot() {
     } finally {
       setPhase("done");
     }
-  }, [repairExplanation, photoFile]);
+  }, [repairExplanation, photoFile, clientSessionId]);
 
   const onPhotoChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setPhotoError(null);

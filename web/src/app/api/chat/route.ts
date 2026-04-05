@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
+import { getSession } from "@/lib/auth-session";
+import { logChatbotExchange } from "@/lib/chatbot-log";
+
 export const runtime = "nodejs";
 
 const CHOICE_LABELS: Record<"artisan" | "diy" | "repair", string> = {
@@ -53,6 +56,7 @@ function parseBody(body: unknown): {
   skipPhoto: boolean;
   imageBase64: string;
   mimeType: string;
+  clientSessionId: string | null;
 } | null {
   if (typeof body !== "object" || body === null) return null;
   const o = body as Record<string, unknown>;
@@ -66,7 +70,12 @@ function parseBody(body: unknown): {
   const imageBase64 =
     typeof o.imageBase64 === "string" ? o.imageBase64.trim() : "";
   const mimeType = typeof o.mimeType === "string" ? o.mimeType.trim() : "";
-  return { choiceId, explanation, skipPhoto, imageBase64, mimeType };
+  const rawSession = o.clientSessionId;
+  const clientSessionId =
+    typeof rawSession === "string" && rawSession.trim().length > 0
+      ? rawSession.trim().slice(0, 80)
+      : null;
+  return { choiceId, explanation, skipPhoto, imageBase64, mimeType, clientSessionId };
 }
 
 export async function POST(request: Request) {
@@ -82,7 +91,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "choiceId requis (artisan, diy ou repair)" }, { status: 400 });
   }
 
-  const { choiceId, explanation, skipPhoto, imageBase64, mimeType } = parsed;
+  const { choiceId, explanation, skipPhoto, imageBase64, mimeType, clientSessionId } =
+    parsed;
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -93,6 +103,8 @@ export async function POST(request: Request) {
   const openai = new OpenAI({ apiKey });
 
   try {
+    const session = await getSession();
+
     if (choiceId === "repair") {
       if (explanation.length > MAX_EXPLANATION) {
         return NextResponse.json({ error: "Texte trop long" }, { status: 400 });
@@ -138,6 +150,15 @@ export async function POST(request: Request) {
         if (!text) {
           return NextResponse.json({ error: "Réponse vide", fallback: true }, { status: 502 });
         }
+        await logChatbotExchange({
+          clientSessionId,
+          userId: session?.userId ?? null,
+          choiceId: "repair",
+          step: "repair_vision",
+          userText: explanation,
+          assistantText: text,
+          usedVision: true,
+        });
         return NextResponse.json({ reply: text, configured: true });
       }
 
@@ -163,6 +184,15 @@ export async function POST(request: Request) {
         if (!text) {
           return NextResponse.json({ error: "Réponse vide", fallback: true }, { status: 502 });
         }
+        await logChatbotExchange({
+          clientSessionId,
+          userId: session?.userId ?? null,
+          choiceId: "repair",
+          step: "repair_text",
+          userText: explanation,
+          assistantText: text,
+          usedVision: false,
+        });
         return NextResponse.json({ reply: text, configured: true });
       }
 
@@ -187,6 +217,15 @@ export async function POST(request: Request) {
       if (!text) {
         return NextResponse.json({ error: "Réponse vide", fallback: true }, { status: 502 });
       }
+      await logChatbotExchange({
+        clientSessionId,
+        userId: session?.userId ?? null,
+        choiceId: "repair",
+        step: "repair_ack",
+        userText: explanation,
+        assistantText: text,
+        usedVision: false,
+      });
       return NextResponse.json({ reply: text, configured: true });
     }
 
@@ -207,6 +246,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Réponse vide", fallback: true }, { status: 502 });
     }
 
+    await logChatbotExchange({
+      clientSessionId,
+      userId: session?.userId ?? null,
+      choiceId,
+      step: "simple",
+      userText: null,
+      assistantText: text,
+      usedVision: false,
+    });
     return NextResponse.json({ reply: text, configured: true });
   } catch (e) {
     console.error("[api/chat]", e);

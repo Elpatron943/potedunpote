@@ -74,6 +74,26 @@ model User {
 
   artisanProfile ArtisanProfile?
   reviews        Review[]
+  chatbotLogs    ChatbotLog[]
+}
+
+/// Échanges enregistrés depuis le widget « Bot de ton pote » (pas de fichier image en base).
+model ChatbotLog {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  /// Identifiant de session côté navigateur pour regrouper les messages d’une même conversation.
+  clientSessionId String?
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  choiceId        String
+  step            String
+  userText        String?  @db.Text
+  assistantText   String   @db.Text
+  usedVision      Boolean  @default(false)
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([clientSessionId])
 }
 
 /// Compte revendiqué par un artisan (lié au SIREN) — options premium Stripe plus tard

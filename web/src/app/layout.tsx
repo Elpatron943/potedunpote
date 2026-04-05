@@ -27,6 +27,11 @@ export const metadata: Metadata = {
   },
   description:
     "Fiches entreprise, avis et repères pour choisir ton artisan du bâtiment en confiance.",
+  icons: {
+    icon: [{ url: "/brand/logo.png", type: "image/png" }],
+    apple: [{ url: "/brand/logo.png", type: "image/png" }],
+    shortcut: "/brand/logo.png",
+  },
 };
 
 export default function RootLayout({

@@ -16,7 +16,7 @@ export async function SiteHeader() {
           href="/"
           className={
             hasLogo
-              ? "inline-flex min-h-9 items-center"
+              ? "inline-flex min-h-16 items-center sm:min-h-[4.5rem]"
               : "font-[family-name:var(--font-display)] text-lg font-medium tracking-tight text-ink sm:text-xl"
           }
           aria-label="Le pote d'un pote — accueil"
@@ -25,9 +25,9 @@ export async function SiteHeader() {
             <Image
               src={SITE_LOGO_PUBLIC_PATH}
               alt="Le pote d'un pote"
-              width={200}
-              height={48}
-              className="h-8 w-auto max-h-9 max-w-[11rem] object-contain object-left sm:h-9 sm:max-w-[13rem]"
+              width={400}
+              height={96}
+              className="h-16 w-auto max-h-16 max-w-[22rem] object-contain object-left sm:h-[4.5rem] sm:max-h-[4.5rem] sm:max-w-[26rem]"
               priority
             />
           ) : (

@@ -117,6 +117,23 @@ model BtpPrestation {
   @@index([metierId])
 }
 
+/// Guide bricolage DIY (URL /conseils/[slug], alimenté par le chatbot ou seed).
+model DiyKnowledgeArticle {
+  id             String   @id
+  slug           String   @unique
+  metierId       String
+  prestationId   String
+  title          String
+  excerpt        String?
+  bodyMarkdown   String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([metierId, prestationId])
+  @@index([metierId])
+  @@index([createdAt])
+}
+
 /// Compte revendiqué par un artisan (lié au SIREN) — options premium Stripe plus tard
 model ArtisanProfile {
   id           String    @id @default(cuid())

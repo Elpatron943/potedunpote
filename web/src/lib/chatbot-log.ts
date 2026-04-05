@@ -2,7 +2,7 @@ import { createId } from "@paralleldrive/cuid2";
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-export type ChatbotStep = "simple" | "repair_ack" | "repair_text" | "repair_vision";
+export type ChatbotStep = "simple" | "repair_ack" | "repair_text" | "repair_vision" | "diy_guide";
 
 const MAX_USER_TEXT = 6000;
 const MAX_ASSISTANT_TEXT = 50000;

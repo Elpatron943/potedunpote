@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type SVGProps,
 } from "react";
+import type { SerializedBtpReferentiel } from "@/lib/btp-referentiel-types";
 
 function newClientSessionId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -22,6 +23,12 @@ type ChoiceId = "artisan" | "diy" | "repair";
 type Phase =
   | "intro"
   | "loading_simple"
+  | "diy_loading_ref"
+  | "diy_metier"
+  | "diy_prestation"
+  | "loading_diy_guide"
+  | "diy_done"
+  | "diy_error"
   | "repair_explain"
   | "loading_repair_ack"
   | "repair_photo"
@@ -106,6 +113,17 @@ export function SiteChatbot() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [clientSessionId, setClientSessionId] = useState(newClientSessionId);
+  const [diyRef, setDiyRef] = useState<SerializedBtpReferentiel | null>(null);
+  const [diyMetierId, setDiyMetierId] = useState("");
+  const [diyPrestationId, setDiyPrestationId] = useState("");
+  const [diyResult, setDiyResult] = useState<{
+    slug: string;
+    title: string;
+    excerpt: string | null;
+    bodyMarkdown: string;
+    source: string;
+  } | null>(null);
+  const [diyError, setDiyError] = useState<string | null>(null);
 
   const reset = useCallback(() => {
     setPhase("intro");
@@ -116,6 +134,11 @@ export function SiteChatbot() {
     setFinalReply(null);
     setPhotoFile(null);
     setPhotoError(null);
+    setDiyRef(null);
+    setDiyMetierId("");
+    setDiyPrestationId("");
+    setDiyResult(null);
+    setDiyError(null);
     setClientSessionId(newClientSessionId());
   }, []);
 
@@ -128,6 +151,27 @@ export function SiteChatbot() {
       setPhotoFile(null);
       setPhotoError(null);
       setPhase("repair_explain");
+      return;
+    }
+
+    if (id === "diy") {
+      setChoice("diy");
+      setDiyError(null);
+      setDiyMetierId("");
+      setDiyPrestationId("");
+      setDiyResult(null);
+      setDiyRef(null);
+      setPhase("diy_loading_ref");
+      try {
+        const res = await fetch("/api/referentiel-btp");
+        if (!res.ok) throw new Error("ref");
+        const data = (await res.json()) as SerializedBtpReferentiel;
+        setDiyRef(data);
+        setPhase("diy_metier");
+      } catch {
+        setDiyError("Impossible de charger le référentiel métiers. Réessaie plus tard.");
+        setPhase("diy_error");
+      }
       return;
     }
 
@@ -148,6 +192,47 @@ export function SiteChatbot() {
       setPhase("done");
     }
   }, [clientSessionId]);
+
+  const loadDiyGuide = useCallback(async () => {
+    if (!diyMetierId || !diyPrestationId) return;
+    setPhase("loading_diy_guide");
+    setDiyError(null);
+    try {
+      const res = await fetch("/api/diy-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metierId: diyMetierId,
+          prestationId: diyPrestationId,
+          clientSessionId,
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        slug?: string;
+        title?: string;
+        excerpt?: string | null;
+        bodyMarkdown?: string;
+        source?: string;
+      };
+      if (!res.ok || !data.slug || !data.bodyMarkdown) {
+        setDiyError(data.error ?? "Génération impossible pour le moment.");
+        setPhase("diy_prestation");
+        return;
+      }
+      setDiyResult({
+        slug: data.slug,
+        title: data.title ?? "Guide",
+        excerpt: data.excerpt ?? null,
+        bodyMarkdown: data.bodyMarkdown,
+        source: data.source ?? "unknown",
+      });
+      setPhase("diy_done");
+    } catch {
+      setDiyError("Erreur réseau. Réessaie.");
+      setPhase("diy_prestation");
+    }
+  }, [diyMetierId, diyPrestationId, clientSessionId]);
 
   const submitRepairExplanation = useCallback(async () => {
     const t = repairExplanation.trim();
@@ -469,7 +554,160 @@ export function SiteChatbot() {
                 </>
               )}
 
-              {choice != null && choice !== "repair" && (phase === "loading_simple" || phase === "done") && (
+              {choice === "diy" && phase !== "intro" && (
+                <>
+                  <Bubble role="user">
+                    <p>{CHOICES.find((c) => c.id === "diy")?.label ?? ""}</p>
+                  </Bubble>
+
+                  {(phase === "diy_loading_ref" || phase === "diy_metier") && (
+                    <>
+                      <Bubble role="assistant">
+                        <p>
+                          D’abord choisis le <strong className="font-medium text-ink">métier</strong> (comme sur
+                          le site), puis tu pourras préciser la prestation.
+                        </p>
+                      </Bubble>
+                      {phase === "diy_loading_ref" ? (
+                        <LoadingLine />
+                      ) : (
+                        diyRef && (
+                          <div className="space-y-2 pt-0.5">
+                            <label className="text-xs font-medium text-ink-soft">Type d’artisan / métier</label>
+                            <select
+                              value={diyMetierId}
+                              onChange={(e) => {
+                                setDiyMetierId(e.target.value);
+                                setDiyPrestationId("");
+                              }}
+                              className="w-full rounded-xl border border-ink/15 bg-canvas-muted/30 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-white/15 dark:bg-white/5"
+                            >
+                              <option value="">— Choisis un métier —</option>
+                              {diyRef.metiers.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={!diyMetierId}
+                              onClick={() => setPhase("diy_prestation")}
+                              className="w-full rounded-xl bg-teal-700 px-3 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
+                            >
+                              Continuer
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </>
+                  )}
+
+                  {phase === "diy_prestation" && diyRef && diyMetierId && (
+                    <>
+                      <Bubble role="assistant">
+                        <p>
+                          Métier :{" "}
+                          <strong className="font-medium text-ink">
+                            {diyRef.metiers.find((m) => m.id === diyMetierId)?.label ?? diyMetierId}
+                          </strong>
+                          . Choisis maintenant la <strong className="font-medium text-ink">prestation</strong> la
+                          plus proche de ton projet.
+                        </p>
+                      </Bubble>
+                      <div className="space-y-2 pt-0.5">
+                        <label className="text-xs font-medium text-ink-soft">Prestation</label>
+                        <select
+                          value={diyPrestationId}
+                          onChange={(e) => setDiyPrestationId(e.target.value)}
+                          className="w-full rounded-xl border border-ink/15 bg-canvas-muted/30 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-white/15 dark:bg-white/5"
+                        >
+                          <option value="">— Choisis une prestation —</option>
+                          {(diyRef.prestationsByMetierId[diyMetierId] ?? []).map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.label}
+                            </option>
+                          ))}
+                        </select>
+                        {diyError ? <p className="text-xs text-amber-800 dark:text-amber-200">{diyError}</p> : null}
+                        <button
+                          type="button"
+                          disabled={!diyPrestationId}
+                          onClick={() => void loadDiyGuide()}
+                          className="w-full rounded-xl bg-teal-700 px-3 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
+                        >
+                          Voir le guide
+                        </button>
+                        <p className="text-[10px] leading-snug text-ink-soft">
+                          Le guide est enregistré sur la page{" "}
+                          <Link href="/conseils" className="font-medium text-accent underline" onClick={() => setOpen(false)}>
+                            Conseils DIY
+                          </Link>{" "}
+                          pour le référencement (nouvelle fiche si besoin).
+                        </p>
+                      </div>
+                    </>
+                  )}
+
+                  {phase === "loading_diy_guide" && (
+                    <Bubble role="assistant">
+                      <LoadingLine />
+                      <p className="mt-2 text-xs text-ink-soft">
+                        Recherche dans la base ou rédaction du guide…
+                      </p>
+                    </Bubble>
+                  )}
+
+                  {phase === "diy_done" && diyResult && (
+                    <>
+                      <Bubble role="assistant">
+                        <p className="font-semibold text-ink">{diyResult.title}</p>
+                        {diyResult.excerpt ? (
+                          <p className="mt-2 text-xs leading-relaxed text-ink-soft">{diyResult.excerpt}</p>
+                        ) : null}
+                        <p className="mt-2 text-[10px] text-ink-soft">
+                          {diyResult.source === "database"
+                            ? "Fiche déjà présente dans notre base conseils."
+                            : "Nouvelle fiche ajoutée aux conseils du site."}
+                        </p>
+                      </Bubble>
+                      <p className="mt-2">
+                        <Link
+                          href={`/conseils/${diyResult.slug}`}
+                          className="inline-flex items-center justify-center rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-md shadow-teal-950/25 transition hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500"
+                          onClick={() => setOpen(false)}
+                        >
+                          Lire le guide complet
+                        </Link>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={reset}
+                        className="text-xs font-medium text-accent hover:underline"
+                      >
+                        Recommencer
+                      </button>
+                    </>
+                  )}
+
+                  {phase === "diy_error" && (
+                    <>
+                      <Bubble role="assistant">
+                        <p className="text-sm text-amber-900 dark:text-amber-100">{diyError}</p>
+                      </Bubble>
+                      <button
+                        type="button"
+                        onClick={reset}
+                        className="text-xs font-medium text-accent hover:underline"
+                      >
+                        Recommencer
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+
+              {choice === "artisan" && (phase === "loading_simple" || phase === "done") && (
                 <AnsweredBlock
                   choice={choice}
                   loading={phase === "loading_simple"}

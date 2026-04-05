@@ -45,6 +45,12 @@ export async function SiteHeader() {
           >
             Recherche
           </Link>
+          <Link
+            href="/conseils"
+            className="hidden rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition hover:bg-canvas-muted/80 hover:text-ink sm:inline-block dark:hover:bg-white/5"
+          >
+            Conseils DIY
+          </Link>
           {session ? (
             <form action={logoutAction}>
               <button

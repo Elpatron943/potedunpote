@@ -55,6 +55,9 @@ Les fichiers SQL historiques restent dans **`web/prisma/migrations/`** (référe
 **Tables `BtpMetier` et `BtpPrestation`** (référentiel « type d’artisan » + prestations précises, utilisé par la recherche, les avis et les filtres) : appliquer  
 [`web/prisma/migrations/20260405140000_btp_referentiel/migration.sql`](./prisma/migrations/20260405140000_btp_referentiel/migration.sql). L’app lit ces tables via `getBtpReferentiel()` (cache ~1 h) ; si elles sont absentes ou vides, une **copie embarquée** (`btp-referentiel-seed.ts`) prend le relais avec un avertissement dans les logs serveur.
 
+**Table `DiyKnowledgeArticle` + contrainte `ChatbotLog`** (guides bricolage « Conseils DIY », parcours chatbot) : appliquer  
+[`web/prisma/migrations/20260405180000_diy_knowledge/migration.sql`](./prisma/migrations/20260405180000_diy_knowledge/migration.sql). Les fiches sont listées sur **`/conseils`** ; le chatbot (option « Je veux faire les travaux tout seul ») lit d’abord la base, sinon génère un guide via **OpenAI** et l’enregistre. Les nouvelles étapes journalisées utilisent `step = diy_guide`.
+
 ---
 
 ## 5. RLS (Row Level Security)

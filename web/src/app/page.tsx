@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { HomeSearchForm } from "@/components/home-search-form";
 import { getSousActivitesForMetier, filterSousActiviteIdsForMetier } from "@/lib/btp-sous-activites";
@@ -14,6 +15,18 @@ export const metadata: Metadata = {
   description:
     "Métier, lieu ou SIREN : fiches entreprise, avis, prix payés par d’autres clients pour des prestations proches, pour comparer avant de choisir ton artisan.",
 };
+
+function HeroHighlight({ children }: { children: ReactNode }) {
+  return (
+    <span className="relative inline-block px-0.5">
+      <span className="relative z-10 font-semibold italic text-warm">{children}</span>
+      <span
+        className="absolute -bottom-1 left-0 right-0 -z-0 h-2 rounded-sm bg-accent/25 dark:bg-accent/20 sm:h-2.5"
+        aria-hidden
+      />
+    </span>
+  );
+}
 
 type PageProps = {
   searchParams: Promise<{
@@ -163,17 +176,13 @@ export default async function HomePage({ searchParams }: PageProps) {
             Confiance travaux
           </p>
           <h1
-            className="animate-home-fade-up-delay font-[family-name:var(--font-display)] text-4xl leading-[1.1] text-ink sm:text-5xl md:text-6xl"
+            className="animate-home-fade-up-delay mx-auto max-w-xl text-balance font-[family-name:var(--font-display)] text-3xl leading-[1.2] text-ink sm:max-w-4xl sm:text-4xl sm:leading-[1.15] md:text-5xl md:leading-[1.12]"
             style={{ fontFeatureSettings: '"liga" 1, "kern" 1' }}
           >
-            Le pote d&apos;un{" "}
-            <span className="relative whitespace-nowrap">
-              <span className="relative z-10 italic text-warm">pote</span>
-              <span
-                className="absolute -bottom-1 left-0 right-0 -z-0 h-3 rounded-sm bg-accent/25 dark:bg-accent/20"
-                aria-hidden
-              />
-            </span>
+            Je connais le <HeroHighlight>pote d&apos;un pote</HeroHighlight> qui{" "}
+            <HeroHighlight>bosse bien</HeroHighlight>{" "}
+            <HeroHighlight>pour un prix correct</HeroHighlight> et{" "}
+            <HeroHighlight>dans les temps</HeroHighlight>
           </h1>
           <p className="animate-home-fade-up-delay-2 mt-5 max-w-2xl text-lg text-ink-soft sm:text-xl">
             Repère un artisan du bâtiment près de chez toi :{" "}
@@ -467,10 +476,6 @@ export default async function HomePage({ searchParams }: PageProps) {
             </section>
           )}
         </div>
-
-        <footer className="mx-auto mt-20 max-w-2xl text-center text-xs text-ink-soft">
-          Les avis utilisateurs arrivent bientôt sur les fiches entreprise.
-        </footer>
       </div>
     </div>
   );

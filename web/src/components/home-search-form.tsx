@@ -320,11 +320,6 @@ export function HomeSearchForm({
                   ))}
                 </ul>
               )}
-              <p className="text-xs text-ink-soft">
-                Des suggestions apparaissent à partir de deux caractères : privilégie une commune de la
-                liste (code postal précis) pour cadrer la zone. Clique sur « Rechercher » pour lancer la
-                recherche.
-              </p>
             </div>
           </div>
         </>

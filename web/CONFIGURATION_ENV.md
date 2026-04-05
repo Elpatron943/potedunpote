@@ -29,6 +29,8 @@ NEXT_PUBLIC_SUPABASE_URL="https://xxxxx.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="⟨clé anon⟩"
 SUPABASE_SERVICE_ROLE_KEY="⟨clé service_role⟩"
 AUTH_SECRET="⟨phrase secrète longue, ex. openssl rand -base64 32⟩"
+# Canonique SEO / sitemap (optionnel, défaut https://potedunpote.fr dans le code)
+# NEXT_PUBLIC_SITE_URL="https://potedunpote.fr"
 ```
 
 **OpenAI (chat « Bot de ton pote »)** — optionnel :

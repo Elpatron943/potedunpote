@@ -2,7 +2,7 @@
 # Sans @netlify/plugin-nextjs, Netlify ne sait pas servir Next.js (SSR / App Router) → page 404 sur *.netlify.app.
 #
 # « Publish directory » dans l’UI ne doit PAS être « web » (identique à base → erreur plugin).
-# On fixe publish = sortie Next.js depuis la racine du dépôt.
+# publish est relatif à base : ici base = "web" → utiliser ".next", pas "web/.next" (sinon web/web/.next).
 #
 # Supabase : dans Netlify → Environment variables, au minimum :
 #   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, AUTH_SECRET
@@ -11,7 +11,7 @@
 [build]
   base = "web"
   command = "npm run build"
-  publish = "web/.next"
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"

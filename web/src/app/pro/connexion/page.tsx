@@ -30,8 +30,9 @@ export default function ProConnexionPage() {
           Connexion Pro
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Compte artisan pour accéder aux offres Pro, booster ta fiche et suivre ta visibilité. Nouveau
-          compte créé avec le profil <strong className="font-medium text-ink">professionnel</strong>.
+          Compte artisan pour accéder aux offres Pro, booster ta fiche et suivre ta visibilité. L’inscription
+          exige une <strong className="font-medium text-ink">vérification par code e-mail</strong> (même
+          principe que pour les particuliers).
         </p>
         <p className="mt-3 text-sm text-ink-soft">
           Tu veux seulement laisser un avis en tant que particulier ?{" "}

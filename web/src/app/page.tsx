@@ -8,7 +8,12 @@ import {
   getBtpReferentiel,
   getSousActivitesForMetier,
 } from "@/lib/btp-referentiel";
+import {
+  getPremiumContactsBySirens,
+  type PremiumContactInfo,
+} from "@/lib/artisan-premium-contact";
 import { getVerifiedRegisteredSirens } from "@/lib/artisan-verified-sirens";
+import { ContactProButton } from "@/components/contact-pro-button";
 import { searchEntreprisesBtp, searchEntreprisesDirect } from "@/lib/recherche-entreprises";
 import { getPublishedReviewAggregatesBySiren } from "@/lib/reviews-aggregate";
 import { SearchResultReviewScore } from "@/components/search-result-review-score";
@@ -136,10 +141,17 @@ export default async function HomePage({ searchParams }: PageProps) {
         })
       : filteredByStars;
 
-  const verifiedRegisteredSirens =
-    result?.ok && sortedFilteredEntreprises.length > 0
-      ? await getVerifiedRegisteredSirens(sortedFilteredEntreprises.map((e) => e.siren))
-      : new Set<string>();
+  let verifiedRegisteredSirens = new Set<string>();
+  let premiumContactsBySiren = new Map<string, PremiumContactInfo>();
+  if (result?.ok && sortedFilteredEntreprises.length > 0) {
+    const sirens = sortedFilteredEntreprises.map((e) => e.siren);
+    const [verified, premium] = await Promise.all([
+      getVerifiedRegisteredSirens(sirens),
+      getPremiumContactsBySirens(sirens),
+    ]);
+    verifiedRegisteredSirens = verified;
+    premiumContactsBySiren = premium;
+  }
 
   const buildPageHref = (p: number) => {
     const q = new URLSearchParams();
@@ -431,12 +443,20 @@ export default async function HomePage({ searchParams }: PageProps) {
                           </div>
                         )}
                         <div className="mt-4 flex flex-col gap-3 border-t border-ink/10 pt-4 dark:border-white/10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                           <Link
                             href={`/entreprise/${e.siren}`}
                             className="inline-flex min-h-[2.75rem] w-full items-center justify-center rounded-xl bg-teal-700 px-4 py-2.5 text-center text-sm font-bold text-white shadow-sm transition hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500 sm:w-auto sm:min-w-[180px] sm:flex-none"
                           >
                             Fiche & avis
                           </Link>
+                          {premiumContactsBySiren.has(e.siren) ? (
+                            <ContactProButton
+                              raisonSociale={e.nom}
+                              contact={premiumContactsBySiren.get(e.siren)!}
+                            />
+                          ) : null}
+                          </div>
                           {reviews && reviews.count > 0 ? (
                             <div className="flex w-full justify-center sm:w-auto sm:justify-end sm:pl-4">
                               <SearchResultReviewScore
@@ -445,7 +465,18 @@ export default async function HomePage({ searchParams }: PageProps) {
                                 compact
                               />
                             </div>
-                          ) : null}
+                          ) : (
+                            <p className="w-full text-center text-sm leading-relaxed text-ink-soft sm:max-w-xs sm:flex-1 sm:text-right">
+                              Avez-vous fait appel à ce pro ?{" "}
+                              <Link
+                                href={`/entreprise/${e.siren}#avis`}
+                                className="font-medium text-accent underline decoration-accent/40 underline-offset-2 transition hover:decoration-accent dark:text-teal-300"
+                              >
+                                Soyez le premier à laisser un avis
+                              </Link>
+                              .
+                            </p>
+                          )}
                         </div>
                       </article>
                     </li>

@@ -195,6 +195,13 @@ export async function submitReview(
         error: "Tu as déjà déposé un avis pour cette entreprise.",
       };
     }
+    if (error.code === "42703") {
+      return {
+        ok: false,
+        error:
+          "Sauvegarde impossible : la table Review en base n’a pas toutes les colonnes attendues. Dans Supabase → SQL, exécute le fichier prisma/migrations/20260406120000_review_columns_if_missing/migration.sql (ou lance prisma migrate deploy).",
+      };
+    }
     throw error;
   }
 

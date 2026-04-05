@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ContactProButton } from "@/components/contact-pro-button";
+import type { PremiumContactInfo } from "@/lib/artisan-premium-contact";
 import type { ReviewStatus } from "@/lib/db-enums";
 import { ReviewForm } from "@/components/review-form";
 import { complementKeyLabel } from "@/lib/complements-labels";
@@ -78,6 +80,7 @@ export function EntrepriseFiche({
   isLoggedIn,
   priceStats,
   btpReferentiel,
+  premiumContact,
 }: {
   detail: EntrepriseDetail;
   publishedReviews: PublicReviewPayload[];
@@ -85,6 +88,7 @@ export function EntrepriseFiche({
   isLoggedIn: boolean;
   priceStats: PublishedPriceStats | null;
   btpReferentiel: SerializedBtpReferentiel;
+  premiumContact: PremiumContactInfo | null;
 }) {
   const complementEntries = Object.entries(detail.complements).sort(([a], [b]) =>
     a.localeCompare(b, "fr"),
@@ -103,6 +107,14 @@ export function EntrepriseFiche({
           Les informations ci-dessous sont affichées à titre indicatif et peuvent être incomplètes
           ou évolutives.
         </p>
+        {premiumContact ? (
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <span className="rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent dark:text-teal-200">
+              Pro — contact activé
+            </span>
+            <ContactProButton raisonSociale={detail.nom} contact={premiumContact} />
+          </div>
+        ) : null}
       </header>
 
       {/* Synthèse légale */}
@@ -274,7 +286,7 @@ export function EntrepriseFiche({
       </section>
 
       {/* Avis clients */}
-      <section className="space-y-6">
+      <section id="avis" className="scroll-mt-24 space-y-6">
         <div>
           <h2 className="text-lg font-semibold text-ink">Avis clients</h2>
           <p className="mt-1 text-sm text-ink-soft">

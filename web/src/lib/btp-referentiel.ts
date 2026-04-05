@@ -81,27 +81,57 @@ async function loadBtpReferentielUncached(): Promise<BtpReferentiel> {
 }
 
 /**
- * Référentiel métiers + prestations (Supabase, sinon copie embarquée).
- * Mis en cache (revalidation 1 h).
+ * Données sérialisables pour `unstable_cache` : pas de `Set` (mal géré selon runtime Next / Turbopack).
  */
-export const getBtpReferentiel = unstable_cache(
-  loadBtpReferentielUncached,
-  ["btp-referentiel-v1"],
-  { revalidate: 3600 },
-);
-
-export function serializeBtpReferentiel(ref: BtpReferentiel): SerializedBtpReferentiel {
+async function loadBtpReferentielSerializableForCache(): Promise<{
+  metiers: BtpMetier[];
+  prestationsByMetierId: Record<string, SousActivite[]>;
+  surfacePricedActiviteIds: string[];
+}> {
+  const ref = await loadBtpReferentielUncached();
   return {
-    metiers: ref.metiers.map((m) => ({ id: m.id, label: m.label })),
+    metiers: ref.metiers,
     prestationsByMetierId: ref.prestationsByMetierId,
     surfacePricedActiviteIds: [...ref.surfacePricedActiviteIds],
   };
 }
 
+const getCachedBtpReferentielSerializable = unstable_cache(
+  loadBtpReferentielSerializableForCache,
+  ["btp-referentiel-v2"],
+  { revalidate: 3600 },
+);
+
+/**
+ * Référentiel métiers + prestations (Supabase, sinon copie embarquée).
+ * Mis en cache (revalidation 1 h).
+ */
+export async function getBtpReferentiel(): Promise<BtpReferentiel> {
+  const p = await getCachedBtpReferentielSerializable();
+  return {
+    metiers: p.metiers,
+    prestationsByMetierId: p.prestationsByMetierId,
+    surfacePricedActiviteIds: new Set(p.surfacePricedActiviteIds),
+  };
+}
+
+function surfacePricedIdsAsArray(ref: BtpReferentiel | SerializedBtpReferentiel): string[] {
+  const raw = ref.surfacePricedActiviteIds;
+  if (raw instanceof Set) return [...raw];
+  if (Array.isArray(raw)) return [...raw];
+  return [];
+}
+
+export function serializeBtpReferentiel(ref: BtpReferentiel): SerializedBtpReferentiel {
+  return {
+    metiers: ref.metiers.map((m) => ({ id: m.id, label: m.label })),
+    prestationsByMetierId: ref.prestationsByMetierId,
+    surfacePricedActiviteIds: surfacePricedIdsAsArray(ref),
+  };
+}
+
 function surfaceSet(ref: BtpReferentiel | SerializedBtpReferentiel): Set<string> {
-  return ref.surfacePricedActiviteIds instanceof Set
-    ? ref.surfacePricedActiviteIds
-    : new Set(ref.surfacePricedActiviteIds);
+  return new Set(surfacePricedIdsAsArray(ref));
 }
 
 export function getBtpMetierFromRef(

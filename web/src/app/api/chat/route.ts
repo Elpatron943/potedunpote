@@ -3,6 +3,7 @@ import OpenAI from "openai";
 
 import { getSession } from "@/lib/auth-session";
 import { logChatbotExchange } from "@/lib/chatbot-log";
+import type { RepairInterventionChoice } from "@/lib/repair-wizard-qcm";
 
 export const runtime = "nodejs";
 
@@ -34,20 +35,46 @@ const SYSTEM_REPAIR_TEXT = `Tu es « Bot de ton pote », assistant pour identifi
 
 Règles :
 - Réponds en français.
-- Tu n’as que la description texte (pas de photo). Propose des hypothèses prudentes, des étapes de vérif, et quand appeler un pro.
+- L’utilisateur a rempli un questionnaire structuré (diagnostic, urgence, cause, réparabilité) : tu le trouveras dans le message utilisateur.
+- Tu n’as pas de photo à ce stade (analyse texte seule). Croise le questionnaire avec des hypothèses prudentes, des étapes de vérif, et quand appeler un pro.
 - Rappelle les limites du conseil à distance ; pas de diagnostic médical ni gaz / électricité dangereuse sans professionnel si doute.
 - Structure en court paragraphes ou puces si utile.`;
 
-const SYSTEM_REPAIR_VISION = `Tu es « Bot de ton pote », assistant pour analyser une photo dans le cadre d’un problème de réparation / bricolage décrit par l’utilisateur.
+const SYSTEM_REPAIR_VISION = `Tu es « Bot de ton pote », assistant pour analyser une photo dans le cadre d’un problème de réparation / bricolage.
 
 Règles :
 - Réponds en français.
-- Décris ce que tu vois sur la photo en lien avec le problème, ce qui semble plausible comme cause, et des pistes concrètes (outils, étapes, précautions).
+- L’utilisateur a aussi rempli un questionnaire structuré : intègre-le avec ce que tu vois sur la photo.
+- Décris ce que tu vois en lien avec le problème, ce qui semble plausible comme cause, et des pistes concrètes (outils, étapes, précautions).
 - Si la photo ne permet pas de conclure, dis-le honnêtement.
 - Rappelle que ce n’est pas un diagnostic de sécurité garanti ; pour gaz, électricité haute tension ou structure, oriente vers un pro.
 - La photo n’est pas stockée ; elle sert uniquement à cette analyse.`;
 
+const SYSTEM_REPAIR_CLOSURE_DIY = `Tu es « Bot de ton pote ». L’utilisateur a choisi un guidage DIY après diagnostic.
+
+Règles :
+- Réponds en français, ton clair.
+- Tu reçois le questionnaire + une analyse intermédiaire déjà donnée : donne une clôture orientée « pas-à-pas » DIY : ordre des vérifications, précautions sécurité, quand s’arrêter et appeler un pro.
+- Ne promets pas que la réparation suffira ; reste prudent sur gaz, électricité, structure, étanchéité critique.
+- Court à moyen : listes courtes possibles.`;
+
+const SYSTEM_REPAIR_CLOSURE_ARTISAN = `Tu es « Bot de ton pote ». L’utilisateur veut être orienté vers un professionnel.
+
+Règles :
+- Réponds en français.
+- Résume ce qu’un artisan devra savoir (sans inventer de devis ni d’entreprise).
+- Indique comment utiliser le site : recherche par métier et lieu sur la page d’accueil, lecture des fiches et avis.
+- Suggère le type de corps de métier le plus probable d’après le questionnaire (sans nom d’entreprise).`;
+
+const SYSTEM_REPAIR_CLOSURE_SAV = `Tu es « Bot de ton pote ». L’utilisateur s’oriente vers sinistre / SAV fabricant.
+
+Règles :
+- Réponds en français.
+- Rappelle les grandes étapes : contacter assureur ou SAV, numéro de série / facture si utile, photos pour dossier, délais types (sans chiffres inventés).
+- Ne remplace pas les conditions du contrat ou de la garantie ; reste général et prudent.`;
+
 const MAX_EXPLANATION = 6000;
+const MAX_PRIOR_ANALYSIS = 8000;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 function parseBody(body: unknown): {
@@ -57,6 +84,9 @@ function parseBody(body: unknown): {
   imageBase64: string;
   mimeType: string;
   clientSessionId: string | null;
+  repairClosure: boolean;
+  interventionChoice: RepairInterventionChoice | null;
+  priorAnalysis: string;
 } | null {
   if (typeof body !== "object" || body === null) return null;
   const o = body as Record<string, unknown>;
@@ -75,7 +105,23 @@ function parseBody(body: unknown): {
     typeof rawSession === "string" && rawSession.trim().length > 0
       ? rawSession.trim().slice(0, 80)
       : null;
-  return { choiceId, explanation, skipPhoto, imageBase64, mimeType, clientSessionId };
+  const repairClosure = o.repairClosure === true;
+  const ic = o.interventionChoice;
+  const interventionChoice =
+    ic === "diy" || ic === "artisan" || ic === "sav" ? ic : null;
+  const priorAnalysis =
+    typeof o.priorAnalysis === "string" ? o.priorAnalysis.trim() : "";
+  return {
+    choiceId,
+    explanation,
+    skipPhoto,
+    imageBase64,
+    mimeType,
+    clientSessionId,
+    repairClosure,
+    interventionChoice,
+    priorAnalysis,
+  };
 }
 
 export async function POST(request: Request) {
@@ -91,8 +137,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "choiceId requis (artisan, diy ou repair)" }, { status: 400 });
   }
 
-  const { choiceId, explanation, skipPhoto, imageBase64, mimeType, clientSessionId } =
-    parsed;
+  const {
+    choiceId,
+    explanation,
+    skipPhoto,
+    imageBase64,
+    mimeType,
+    clientSessionId,
+    repairClosure,
+    interventionChoice,
+    priorAnalysis,
+  } = parsed;
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -108,6 +163,59 @@ export async function POST(request: Request) {
     if (choiceId === "repair") {
       if (explanation.length > MAX_EXPLANATION) {
         return NextResponse.json({ error: "Texte trop long" }, { status: 400 });
+      }
+
+      if (repairClosure) {
+        if (!interventionChoice) {
+          return NextResponse.json(
+            { error: "interventionChoice requis (diy, artisan ou sav)" },
+            { status: 400 },
+          );
+        }
+        if (!explanation) {
+          return NextResponse.json({ error: "explanation requis pour la clôture" }, { status: 400 });
+        }
+        const priorSlice = priorAnalysis.slice(0, MAX_PRIOR_ANALYSIS);
+        const closureSystem: Record<RepairInterventionChoice, string> = {
+          diy: SYSTEM_REPAIR_CLOSURE_DIY,
+          artisan: SYSTEM_REPAIR_CLOSURE_ARTISAN,
+          sav: SYSTEM_REPAIR_CLOSURE_SAV,
+        };
+        const orientationLabel =
+          interventionChoice === "diy"
+            ? "Guidage pas-à-pas DIY"
+            : interventionChoice === "artisan"
+              ? "Mise en relation / recherche d’un artisan sur le site"
+              : "Déclaration sinistre / SAV fabricant";
+        const userBlock =
+          priorSlice.length > 0
+            ? `Réponses au questionnaire structuré :\n\n${explanation}\n\n---\nAnalyse déjà communiquée (texte ou photo) :\n"""${priorSlice}"""\n\nOrientation finale demandée par l’utilisateur : ${orientationLabel}.`
+            : `Réponses au questionnaire structuré :\n\n${explanation}\n\nOrientation finale demandée par l’utilisateur : ${orientationLabel}.`;
+
+        const completion = await openai.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: closureSystem[interventionChoice] },
+            { role: "user", content: userBlock },
+          ],
+          max_tokens: 700,
+          temperature: 0.45,
+        });
+
+        const text = completion.choices[0]?.message?.content?.trim() ?? "";
+        if (!text) {
+          return NextResponse.json({ error: "Réponse vide", fallback: true }, { status: 502 });
+        }
+        await logChatbotExchange({
+          clientSessionId,
+          userId: session?.userId ?? null,
+          choiceId: "repair",
+          step: "repair_closure",
+          userText: `[${interventionChoice}]\n${explanation.slice(0, 4000)}`,
+          assistantText: text,
+          usedVision: false,
+        });
+        return NextResponse.json({ reply: text, configured: true });
       }
 
       if (imageBase64) {

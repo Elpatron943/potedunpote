@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MarkdownProse } from "@/components/markdown-prose";
 import { getDiyArticleBySlug } from "@/lib/diy-articles";
+import { diyListCategoryLabel } from "@/lib/diy-wizard-qcm";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -31,6 +32,7 @@ export default async function ConseilArticlePage({ params }: PageProps) {
         month: "long",
         year: "numeric",
       }).format(updated);
+  const categoryLabel = diyListCategoryLabel(article.metierId, article.slug);
 
   return (
     <div className="min-h-screen bg-canvas px-4 py-10 sm:px-6">
@@ -49,6 +51,13 @@ export default async function ConseilArticlePage({ params }: PageProps) {
         </p>
 
         <header className="border-b border-ink/10 pb-8 dark:border-white/10">
+          {categoryLabel ? (
+            <p className="mb-3">
+              <span className="inline-block rounded-full border border-ink/10 bg-canvas-muted/50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft dark:border-white/10 dark:bg-white/5">
+                {categoryLabel}
+              </span>
+            </p>
+          ) : null}
           <h1 className="font-[family-name:var(--font-display)] text-3xl text-ink sm:text-4xl">
             {article.title}
           </h1>

@@ -29,7 +29,7 @@ export default function ConnexionPage() {
           Connexion
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Compte gratuit pour déposer un avis. Après inscription, tu es connecté automatiquement.
+          Compte gratuit pour déposer un avis. L’inscription envoie un <strong className="font-medium text-ink">code par e-mail</strong> ; après validation, tu es connecté automatiquement.
         </p>
         <p className="mt-3 text-sm text-ink-soft">
           Tu es artisan et tu cherches les offres Pro ?{" "}

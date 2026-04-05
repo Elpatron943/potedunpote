@@ -10,6 +10,24 @@ import {
   type SVGProps,
 } from "react";
 import type { SerializedBtpReferentiel } from "@/lib/btp-referentiel-types";
+import {
+  getWizardQuestion,
+  validateWizardAnswers,
+  WIZARD_LEVEL_ORDER,
+  type DiyProjectKind,
+  type WizardLevelId,
+} from "@/lib/diy-wizard-qcm";
+import {
+  expandRepairSequence,
+  formatRepairWizardForPrompt,
+  getCurrentRepairStepId,
+  getRepairWizardQuestion,
+  pruneRepairAnswers,
+  REPAIR_INTERVENTION_OPTIONS,
+  repairWizardGoBack,
+  validateRepairWizardAnswers,
+  type RepairInterventionChoice,
+} from "@/lib/repair-wizard-qcm";
 
 function newClientSessionId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -23,16 +41,18 @@ type ChoiceId = "artisan" | "diy" | "repair";
 type Phase =
   | "intro"
   | "loading_simple"
+  | "diy_kind"
   | "diy_loading_ref"
-  | "diy_metier"
-  | "diy_prestation"
+  | "diy_domaine"
+  | "diy_wizard"
   | "loading_diy_guide"
   | "diy_done"
   | "diy_error"
-  | "repair_explain"
-  | "loading_repair_ack"
+  | "repair_wizard"
   | "repair_photo"
-  | "loading_repair_final"
+  | "loading_repair_mid"
+  | "repair_intervention"
+  | "loading_repair_closure"
   | "done";
 
 const CHOICES: { id: ChoiceId; label: string }[] = [
@@ -41,8 +61,26 @@ const CHOICES: { id: ChoiceId; label: string }[] = [
   { id: "repair", label: "J’ai quelque chose à réparer" },
 ];
 
-const FALLBACK_REPAIR_ACK =
-  "Merci pour les précisions, j’ai bien noté. As-tu une photo à partager ? Tu peux l’ajouter ci-dessous : elle sert uniquement à l’analyse en direct pour t’aider à identifier le souci et les pistes de réparation — rien n’est enregistré sur nos serveurs.";
+const FALLBACK_REPAIR_MID =
+  "J’ai bien reçu ton parcours (diagnostic, urgence, cause, réparabilité). Sans photo, je ne peux qu’émettre des pistes générales : vérifie les coupures / disjoncteurs si c’est de l’électricité, coupe l’eau en cas de fuite majeure, et fais appel à un pro en cas de doute sur le gaz ou la sécurité. Choisis ci-dessous comment tu veux poursuivre.";
+
+const DIY_KIND_OPTIONS: { id: DiyProjectKind; label: string; hint: string }[] = [
+  {
+    id: "installation",
+    label: "Installation",
+    hint: "Neuf, première pose, création ou ajout d’équipement",
+  },
+  {
+    id: "renovation",
+    label: "Rénovation",
+    hint: "Reprise de l’existant, réfection, remplacement, remise en état",
+  },
+  {
+    id: "reparation",
+    label: "Réparation",
+    hint: "Dépannage, panne, petite réfection ciblée, remise en service",
+  },
+];
 
 function replyForChoice(id: ChoiceId): { paragraphs: string[]; cta?: { href: string; label: string } } {
   switch (id) {
@@ -56,15 +94,17 @@ function replyForChoice(id: ChoiceId): { paragraphs: string[]; cta?: { href: str
     case "diy":
       return {
         paragraphs: [
-          "Tu peux t’inspirer des fiches et des avis pour estimer la difficulté et les budgets, et repérer les bons réflexes avant de te lancer.",
-          "Si un jour tu préfères faire appel à un pro, la recherche reste disponible.",
+          "Le parcours DIY : nature du projet (installation, rénovation ou réparation), corps de métier (référentiel), puis 7 niveaux de QCM (périmètre, contraintes, matériaux, outillage, réglementation, budget, profil). Même parcours = même fiche conseil ; un choix différent = nouvel article.",
+          "Le parcours « J’ai quelque chose à réparer » dans le bot ne crée pas de fiche Conseils : c’est un diagnostic et des pistes sans enregistrement d’article.",
+          "Tu peux aussi t’inspirer des avis et des fiches pros sur le site pour comparer avant de te lancer.",
         ],
         cta: { href: "/", label: "Parcourir le site" },
       };
     case "repair":
       return {
         paragraphs: [
-          "Pour une réparation, un artisan ciblé sur ton type de panne ou d’ouvrage est souvent le plus sûr : renseigne le métier et ta zone pour voir les entreprises et les retours clients.",
+          "Le parcours réparation : QCM à branches définies dans le code (précisions selon eau / élec / chauffage, parcours raccourci si urgence sécurité), puis photo optionnelle et orientation DIY / artisan / SAV.",
+          "Pour dépannage d’urgence (eau, gaz, électricité dangereuse), privilégie toujours la sécurité et un professionnel.",
         ],
         cta: { href: "/", label: "Trouver un artisan" },
       };
@@ -101,21 +141,24 @@ function fileToBase64Payload(file: File): Promise<{ base64: string; mimeType: st
 
 export function SiteChatbot() {
   const titleId = useId();
-  const explainId = useId();
   const photoInputId = useId();
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>("intro");
   const [choice, setChoice] = useState<ChoiceId | null>(null);
   const [aiReply, setAiReply] = useState<string | null>(null);
-  const [repairExplanation, setRepairExplanation] = useState("");
-  const [repairAckReply, setRepairAckReply] = useState<string | null>(null);
+  const [repairWizardAnswers, setRepairWizardAnswers] = useState<Record<string, string>>({});
+  const [repairMidReply, setRepairMidReply] = useState<string | null>(null);
+  const [repairClosureChoice, setRepairClosureChoice] =
+    useState<RepairInterventionChoice | null>(null);
   const [finalReply, setFinalReply] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [clientSessionId, setClientSessionId] = useState(newClientSessionId);
+  const [diyProjectKind, setDiyProjectKind] = useState<DiyProjectKind | "">("");
   const [diyRef, setDiyRef] = useState<SerializedBtpReferentiel | null>(null);
-  const [diyMetierId, setDiyMetierId] = useState("");
-  const [diyPrestationId, setDiyPrestationId] = useState("");
+  const [diyDomaineId, setDiyDomaineId] = useState("");
+  const [diyWizardLevel, setDiyWizardLevel] = useState<WizardLevelId | null>(null);
+  const [diyWizardAnswers, setDiyWizardAnswers] = useState<Record<string, string>>({});
   const [diyResult, setDiyResult] = useState<{
     slug: string;
     title: string;
@@ -129,14 +172,17 @@ export function SiteChatbot() {
     setPhase("intro");
     setChoice(null);
     setAiReply(null);
-    setRepairExplanation("");
-    setRepairAckReply(null);
+    setRepairWizardAnswers({});
+    setRepairMidReply(null);
+    setRepairClosureChoice(null);
     setFinalReply(null);
     setPhotoFile(null);
     setPhotoError(null);
+    setDiyProjectKind("");
     setDiyRef(null);
-    setDiyMetierId("");
-    setDiyPrestationId("");
+    setDiyDomaineId("");
+    setDiyWizardLevel(null);
+    setDiyWizardAnswers({});
     setDiyResult(null);
     setDiyError(null);
     setClientSessionId(newClientSessionId());
@@ -145,33 +191,26 @@ export function SiteChatbot() {
   const pick = useCallback(async (id: ChoiceId) => {
     if (id === "repair") {
       setChoice("repair");
-      setRepairExplanation("");
-      setRepairAckReply(null);
+      setRepairWizardAnswers({});
+      setRepairMidReply(null);
+      setRepairClosureChoice(null);
       setFinalReply(null);
       setPhotoFile(null);
       setPhotoError(null);
-      setPhase("repair_explain");
+      setPhase("repair_wizard");
       return;
     }
 
     if (id === "diy") {
       setChoice("diy");
       setDiyError(null);
-      setDiyMetierId("");
-      setDiyPrestationId("");
-      setDiyResult(null);
+      setDiyProjectKind("");
       setDiyRef(null);
-      setPhase("diy_loading_ref");
-      try {
-        const res = await fetch("/api/referentiel-btp");
-        if (!res.ok) throw new Error("ref");
-        const data = (await res.json()) as SerializedBtpReferentiel;
-        setDiyRef(data);
-        setPhase("diy_metier");
-      } catch {
-        setDiyError("Impossible de charger le référentiel métiers. Réessaie plus tard.");
-        setPhase("diy_error");
-      }
+      setDiyDomaineId("");
+      setDiyWizardLevel(null);
+      setDiyWizardAnswers({});
+      setDiyResult(null);
+      setPhase("diy_kind");
       return;
     }
 
@@ -193,72 +232,126 @@ export function SiteChatbot() {
     }
   }, [clientSessionId]);
 
-  const loadDiyGuide = useCallback(async () => {
-    if (!diyMetierId || !diyPrestationId) return;
-    setPhase("loading_diy_guide");
+  const startDiyAfterKindPick = useCallback(async (kind: DiyProjectKind) => {
+    setDiyProjectKind(kind);
     setDiyError(null);
+    setDiyRef(null);
+    setDiyDomaineId("");
+    setDiyWizardLevel(null);
+    setDiyWizardAnswers({});
+    setPhase("diy_loading_ref");
     try {
-      const res = await fetch("/api/diy-guide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          metierId: diyMetierId,
-          prestationId: diyPrestationId,
-          clientSessionId,
-        }),
-      });
-      const data = (await res.json()) as {
-        error?: string;
-        slug?: string;
-        title?: string;
-        excerpt?: string | null;
-        bodyMarkdown?: string;
-        source?: string;
-      };
-      if (!res.ok || !data.slug || !data.bodyMarkdown) {
-        setDiyError(data.error ?? "Génération impossible pour le moment.");
-        setPhase("diy_prestation");
+      const res = await fetch("/api/referentiel-btp");
+      if (!res.ok) throw new Error("ref");
+      const data = (await res.json()) as SerializedBtpReferentiel;
+      if (!data.metiers?.length) throw new Error("ref");
+      setDiyRef(data);
+      setPhase("diy_domaine");
+    } catch {
+      setDiyError("Impossible de charger les domaines. Réessaie plus tard.");
+      setPhase("diy_error");
+    }
+  }, []);
+
+  const loadDiyGuide = useCallback(
+    async (answersOverride?: Record<string, string>) => {
+      const finalAnswers = answersOverride ?? diyWizardAnswers;
+      if (!diyProjectKind || !diyDomaineId) return;
+      if (!validateWizardAnswers(diyProjectKind, diyDomaineId, finalAnswers)) {
+        setDiyError("Le questionnaire est incomplet.");
+        setPhase("diy_wizard");
         return;
       }
-      setDiyResult({
-        slug: data.slug,
-        title: data.title ?? "Guide",
-        excerpt: data.excerpt ?? null,
-        bodyMarkdown: data.bodyMarkdown,
-        source: data.source ?? "unknown",
-      });
-      setPhase("diy_done");
-    } catch {
-      setDiyError("Erreur réseau. Réessaie.");
-      setPhase("diy_prestation");
-    }
-  }, [diyMetierId, diyPrestationId, clientSessionId]);
+      setDiyWizardAnswers(finalAnswers);
+      setPhase("loading_diy_guide");
+      setDiyError(null);
+      try {
+        const res = await fetch("/api/diy-guide", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectKind: diyProjectKind,
+            metierId: diyDomaineId,
+            wizardAnswers: finalAnswers,
+            clientSessionId,
+          }),
+        });
+        const data = (await res.json()) as {
+          error?: string;
+          slug?: string;
+          title?: string;
+          excerpt?: string | null;
+          bodyMarkdown?: string;
+          source?: string;
+        };
+        if (!res.ok || !data.slug || !data.bodyMarkdown) {
+          setDiyError(data.error ?? "Génération impossible pour le moment.");
+          setPhase("diy_wizard");
+          setDiyWizardLevel("l9");
+          return;
+        }
+        setDiyResult({
+          slug: data.slug,
+          title: data.title ?? "Guide",
+          excerpt: data.excerpt ?? null,
+          bodyMarkdown: data.bodyMarkdown,
+          source: data.source ?? "unknown",
+        });
+        setPhase("diy_done");
+      } catch {
+        setDiyError("Erreur réseau. Réessaie.");
+        setPhase("diy_wizard");
+        setDiyWizardLevel("l9");
+      }
+    },
+    [diyProjectKind, diyDomaineId, diyWizardAnswers, clientSessionId],
+  );
 
-  const submitRepairExplanation = useCallback(async () => {
-    const t = repairExplanation.trim();
-    if (!t) return;
-    setPhase("loading_repair_ack");
-    setRepairAckReply(null);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choiceId: "repair", explanation: t, clientSessionId }),
-      });
-      const reply = await parseReply(res);
-      setRepairAckReply(reply ?? FALLBACK_REPAIR_ACK);
-    } catch {
-      setRepairAckReply(FALLBACK_REPAIR_ACK);
-    } finally {
-      setPhase("repair_photo");
+  const handleWizardBack = useCallback(() => {
+    if (!diyWizardLevel) {
+      setPhase("diy_domaine");
+      setDiyWizardAnswers({});
+      setDiyError(null);
+      return;
     }
-  }, [repairExplanation, clientSessionId]);
+    const idx = WIZARD_LEVEL_ORDER.indexOf(diyWizardLevel);
+    if (idx <= 0) {
+      setPhase("diy_domaine");
+      setDiyWizardLevel(null);
+      setDiyWizardAnswers({});
+      setDiyError(null);
+      return;
+    }
+    const prev = WIZARD_LEVEL_ORDER[idx - 1];
+    const next = { ...diyWizardAnswers };
+    for (let j = idx; j < WIZARD_LEVEL_ORDER.length; j++) {
+      delete next[WIZARD_LEVEL_ORDER[j]];
+    }
+    setDiyWizardAnswers(next);
+    setDiyWizardLevel(prev);
+    setDiyError(null);
+  }, [diyWizardLevel, diyWizardAnswers]);
+
+  const repairWizardExplanation = useCallback(() => {
+    if (!validateRepairWizardAnswers(repairWizardAnswers)) return "";
+    return formatRepairWizardForPrompt(repairWizardAnswers);
+  }, [repairWizardAnswers]);
+
+  const handleRepairWizardBack = useCallback(() => {
+    const seq = expandRepairSequence(repairWizardAnswers);
+    const answered = seq.filter((s) => repairWizardAnswers[s]);
+    if (answered.length === 0) {
+      reset();
+      return;
+    }
+    setRepairWizardAnswers(repairWizardGoBack(repairWizardAnswers));
+  }, [repairWizardAnswers, reset]);
 
   const finishRepairSkipPhoto = useCallback(async () => {
-    const t = repairExplanation.trim();
+    const t = repairWizardExplanation();
     if (!t) return;
-    setPhase("loading_repair_final");
-    setFinalReply(null);
+    setPhase("loading_repair_mid");
+    setRepairMidReply(null);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -271,24 +364,24 @@ export function SiteChatbot() {
         }),
       });
       const reply = await parseReply(res);
-      setFinalReply(reply);
+      setRepairMidReply(reply ?? FALLBACK_REPAIR_MID);
     } catch {
-      setFinalReply(null);
+      setRepairMidReply(FALLBACK_REPAIR_MID);
     } finally {
-      setPhase("done");
+      setPhase("repair_intervention");
     }
-  }, [repairExplanation, clientSessionId]);
+  }, [repairWizardExplanation, clientSessionId]);
 
   const finishRepairWithPhoto = useCallback(async () => {
-    const t = repairExplanation.trim();
+    const t = repairWizardExplanation();
     if (!t || !photoFile) return;
     setPhotoError(null);
     if (photoFile.size > 4 * 1024 * 1024) {
       setPhotoError("Image trop volumineuse (max 4 Mo).");
       return;
     }
-    setPhase("loading_repair_final");
-    setFinalReply(null);
+    setPhase("loading_repair_mid");
+    setRepairMidReply(null);
     try {
       const { base64, mimeType } = await fileToBase64Payload(photoFile);
       const res = await fetch("/api/chat", {
@@ -303,13 +396,50 @@ export function SiteChatbot() {
         }),
       });
       const reply = await parseReply(res);
-      setFinalReply(reply);
+      setRepairMidReply(reply ?? FALLBACK_REPAIR_MID);
     } catch {
-      setFinalReply(null);
+      setRepairMidReply(FALLBACK_REPAIR_MID);
     } finally {
-      setPhase("done");
+      setPhase("repair_intervention");
     }
-  }, [repairExplanation, photoFile, clientSessionId]);
+  }, [repairWizardExplanation, photoFile, clientSessionId]);
+
+  const submitRepairClosure = useCallback(
+    async (ic: RepairInterventionChoice) => {
+      const t = repairWizardExplanation();
+      const prior = repairMidReply?.trim() ?? "";
+      if (!t) return;
+      setRepairClosureChoice(ic);
+      setPhase("loading_repair_closure");
+      setFinalReply(null);
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            choiceId: "repair",
+            explanation: t,
+            repairClosure: true,
+            interventionChoice: ic,
+            priorAnalysis: prior,
+            clientSessionId,
+          }),
+        });
+        const reply = await parseReply(res);
+        if (reply) {
+          setFinalReply(reply);
+          setPhase("done");
+        } else {
+          setRepairClosureChoice(null);
+          setPhase("repair_intervention");
+        }
+      } catch {
+        setRepairClosureChoice(null);
+        setPhase("repair_intervention");
+      }
+    },
+    [repairWizardExplanation, repairMidReply, clientSessionId],
+  );
 
   const onPhotoChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setPhotoError(null);
@@ -334,6 +464,27 @@ export function SiteChatbot() {
   }, []);
 
   const repairLabel = CHOICES.find((c) => c.id === "repair")?.label ?? "";
+
+  const repairCurrentStepId =
+    phase === "repair_wizard" ? getCurrentRepairStepId(repairWizardAnswers) : null;
+  const repairSeq =
+    phase === "repair_wizard" ? expandRepairSequence(repairWizardAnswers) : [];
+  const repairWizardPayload =
+    phase === "repair_wizard" && repairCurrentStepId
+      ? {
+          wq: getRepairWizardQuestion(repairCurrentStepId, repairWizardAnswers),
+          idx: repairSeq.indexOf(repairCurrentStepId),
+          total: repairSeq.length,
+        }
+      : null;
+
+  const diyWizardPayload =
+    phase === "diy_wizard" && diyRef && diyProjectKind && diyDomaineId && diyWizardLevel
+      ? {
+          wq: getWizardQuestion(diyProjectKind, diyWizardLevel, diyDomaineId),
+          idx: WIZARD_LEVEL_ORDER.indexOf(diyWizardLevel),
+        }
+      : null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
@@ -385,111 +536,163 @@ export function SiteChatbot() {
                     <p>{repairLabel}</p>
                   </Bubble>
 
-                  {(phase === "repair_explain" || phase === "loading_repair_ack") && (
+                  {repairWizardPayload && (
                     <>
                       <Bubble role="assistant">
-                        <p>
-                          Explique-moi ce qu’il faut réparer : matériau, symptômes, depuis quand… Plus c’est
-                          précis, mieux je peux t’aider ensuite.
+                        <p className="text-xs font-semibold text-ink">{repairWizardPayload.wq.parcoursTitle}</p>
+                        <p className="mt-1 text-[10px] text-ink-soft">
+                          Question {repairWizardPayload.idx + 1} / {repairWizardPayload.total}
                         </p>
+                        <p className="mt-2">{repairWizardPayload.wq.question}</p>
                       </Bubble>
-                      <div className="space-y-2 pt-0.5">
-                        <label htmlFor={explainId} className="sr-only">
-                          Description du problème à réparer
-                        </label>
-                        <textarea
-                          id={explainId}
-                          value={repairExplanation}
-                          onChange={(e) => setRepairExplanation(e.target.value)}
-                          readOnly={phase === "loading_repair_ack"}
-                          rows={4}
-                          placeholder="Ex. : joint de douche qui fuit depuis une semaine…"
-                          className="w-full resize-y rounded-xl border border-ink/15 bg-canvas-muted/30 px-3 py-2 text-sm text-ink placeholder:text-ink-soft/70 read-only:opacity-80 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-white/15 dark:bg-white/5"
-                        />
+                      <div className="flex flex-col gap-2 pt-0.5">
+                        {repairWizardPayload.wq.options.map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              const sid = getCurrentRepairStepId(repairWizardAnswers);
+                              if (!sid) return;
+                              const merged = pruneRepairAnswers({
+                                ...repairWizardAnswers,
+                                [sid]: opt.id,
+                              });
+                              setRepairWizardAnswers(merged);
+                              if (validateRepairWizardAnswers(merged)) {
+                                setPhase("repair_photo");
+                              }
+                            }}
+                            className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 dark:border-white/10 dark:hover:bg-white/5"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
                         <button
                           type="button"
-                          onClick={() => void submitRepairExplanation()}
-                          disabled={repairExplanation.trim().length === 0 || phase === "loading_repair_ack"}
-                          className="w-full rounded-xl bg-teal-700 px-3 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
+                          onClick={() => handleRepairWizardBack()}
+                          className="text-xs font-medium text-accent hover:underline"
                         >
-                          {phase === "loading_repair_ack" ? "Envoi…" : "Continuer"}
+                          {repairWizardPayload.idx <= 0 ? "← Changer d’option" : "← Question précédente"}
                         </button>
                       </div>
                     </>
                   )}
 
-                  {choice === "repair" &&
-                    repairExplanation.trim() &&
-                    ["repair_photo", "loading_repair_final", "done"].includes(phase) && (
+                  {phase === "loading_repair_mid" && (
+                    <Bubble role="assistant">
+                      <LoadingLine />
+                      <p className="mt-2 text-xs text-ink-soft">Analyse du parcours (et de la photo si envoyée)…</p>
+                    </Bubble>
+                  )}
+
+                  {["repair_photo", "repair_intervention", "loading_repair_closure"].includes(phase) &&
+                    validateRepairWizardAnswers(repairWizardAnswers) && (
                       <>
                         <Bubble role="user">
-                          <p className="whitespace-pre-wrap">{repairExplanation.trim()}</p>
-                        </Bubble>
-                        <Bubble role="assistant">
-                          <>
-                            {splitParagraphs(repairAckReply ?? FALLBACK_REPAIR_ACK).map((p, i) => (
-                              <p
-                                key={i}
-                                className={i > 0 ? "mt-2 whitespace-pre-line" : "whitespace-pre-line"}
-                              >
-                                {p}
-                              </p>
-                            ))}
-                            {phase === "loading_repair_final" && (
-                              <div className="mt-2 flex items-center gap-2 border-t border-ink/10 pt-2 text-xs text-ink-soft dark:border-white/10">
-                                <span
-                                  className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent"
-                                  aria-hidden
-                                />
-                                Analyse en cours…
-                              </div>
-                            )}
-                          </>
+                          <p className="text-xs text-ink-soft">
+                            Parcours 1 à 4 complétés (diagnostic, urgence, cause, réparabilité).
+                          </p>
                         </Bubble>
 
-                        {(phase === "repair_photo" || phase === "loading_repair_final") && (
-                          <div className="space-y-2 rounded-xl border border-dashed border-ink/15 bg-canvas-muted/20 p-3 dark:border-white/15">
-                            <p className="text-xs text-ink-soft">
-                              Photo optionnelle — analyse uniquement dans cette fenêtre,{" "}
-                              <strong className="font-medium text-ink">aucun fichier n’est stocké</strong> sur nos
-                              serveurs.
-                            </p>
-                            <label htmlFor={photoInputId} className="block text-xs font-medium text-ink">
-                              Ajouter une photo
-                            </label>
-                            <input
-                              id={photoInputId}
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp,image/gif"
-                              onChange={onPhotoChange}
-                              disabled={phase === "loading_repair_final"}
-                              className="block w-full text-xs text-ink file:mr-2 file:rounded-lg file:border-0 file:bg-teal-700 file:px-2 file:py-1.5 file:text-xs file:font-medium file:text-white disabled:opacity-50"
-                            />
-                            {photoFile && (
-                              <p className="text-xs text-ink-soft">
-                                {photoFile.name} ({Math.round(photoFile.size / 1024)} Ko)
+                        {phase === "repair_photo" && (
+                          <>
+                            <Bubble role="assistant">
+                              <p>
+                                Tu peux <strong className="font-medium text-ink">ajouter une photo</strong> pour
+                                affiner l’analyse — c’est optionnel. Rien n’est enregistré sur nos serveurs : la
+                                photo sert uniquement à cette analyse en direct.
                               </p>
-                            )}
-                            {photoError && <p className="text-xs text-warm">{photoError}</p>}
-                            <div className="flex flex-col gap-2 pt-1">
-                              <button
-                                type="button"
-                                onClick={() => void finishRepairWithPhoto()}
-                                disabled={!photoFile || phase === "loading_repair_final"}
-                                className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-md transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
-                              >
-                                Analyser la photo
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void finishRepairSkipPhoto()}
-                                disabled={phase === "loading_repair_final"}
-                                className="text-xs font-medium text-accent hover:underline enabled:cursor-pointer disabled:opacity-50"
-                              >
-                                Pas de photo — conseils avec mon texte seulement
-                              </button>
+                            </Bubble>
+                            <div className="space-y-2 rounded-xl border border-dashed border-ink/15 bg-canvas-muted/20 p-3 dark:border-white/15">
+                              <label htmlFor={photoInputId} className="block text-xs font-medium text-ink">
+                                Ajouter une photo
+                              </label>
+                              <input
+                                id={photoInputId}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                onChange={onPhotoChange}
+                                className="block w-full text-xs text-ink file:mr-2 file:rounded-lg file:border-0 file:bg-teal-700 file:px-2 file:py-1.5 file:text-xs file:font-medium file:text-white disabled:opacity-50"
+                              />
+                              {photoFile && (
+                                <p className="text-xs text-ink-soft">
+                                  {photoFile.name} ({Math.round(photoFile.size / 1024)} Ko)
+                                </p>
+                              )}
+                              {photoError && <p className="text-xs text-warm">{photoError}</p>}
+                              <div className="flex flex-col gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => void finishRepairWithPhoto()}
+                                  disabled={!photoFile}
+                                  className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-md transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
+                                >
+                                  Analyser la photo
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void finishRepairSkipPhoto()}
+                                  className="text-xs font-medium text-accent hover:underline enabled:cursor-pointer disabled:opacity-50"
+                                >
+                                  Pas de photo — analyse avec le questionnaire seulement
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRepairWizardAnswers(repairWizardGoBack(repairWizardAnswers));
+                                    setPhotoFile(null);
+                                    setPhotoError(null);
+                                    setPhase("repair_wizard");
+                                  }}
+                                  className="text-left text-xs font-medium text-ink-soft hover:text-accent hover:underline"
+                                >
+                                  ← Modifier une réponse du questionnaire
+                                </button>
+                              </div>
                             </div>
-                          </div>
+                          </>
+                        )}
+
+                        {(phase === "repair_intervention" || phase === "loading_repair_closure") && (
+                          <>
+                            <Bubble role="assistant">
+                              <>
+                                {splitParagraphs(repairMidReply ?? FALLBACK_REPAIR_MID).map((p, i) => (
+                                  <p
+                                    key={i}
+                                    className={i > 0 ? "mt-2 whitespace-pre-line" : "whitespace-pre-line"}
+                                  >
+                                    {p}
+                                  </p>
+                                ))}
+                                <p className="mt-3 text-xs font-semibold text-ink">
+                                  Parcours 5 — Comment veux-tu poursuivre ?
+                                </p>
+                                {phase === "loading_repair_closure" && (
+                                  <div className="mt-2 flex items-center gap-2 border-t border-ink/10 pt-2 text-xs text-ink-soft dark:border-white/10">
+                                    <span
+                                      className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent"
+                                      aria-hidden
+                                    />
+                                    Génération de la clôture…
+                                  </div>
+                                )}
+                              </>
+                            </Bubble>
+                            <div className="flex flex-col gap-2 pt-0.5">
+                              {REPAIR_INTERVENTION_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  disabled={phase === "loading_repair_closure"}
+                                  onClick={() => void submitRepairClosure(opt.id)}
+                                  className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </>
                         )}
                       </>
                     )}
@@ -503,15 +706,39 @@ export function SiteChatbot() {
                           </p>
                         ))}
                       </Bubble>
-                      <p className="mt-2">
-                        <Link
-                          href="/"
-                          className="inline-flex items-center justify-center rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-md shadow-teal-950/25 transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-teal-600 dark:hover:bg-teal-500"
-                          onClick={() => setOpen(false)}
-                        >
-                          Recherche d’artisan
-                        </Link>
-                      </p>
+                      {repairClosureChoice === "artisan" && (
+                        <p className="mt-2">
+                          <Link
+                            href="/"
+                            className="inline-flex items-center justify-center rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-md shadow-teal-950/25 transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-teal-600 dark:hover:bg-teal-500"
+                            onClick={() => setOpen(false)}
+                          >
+                            Recherche d’artisan
+                          </Link>
+                        </p>
+                      )}
+                      {repairClosureChoice === "diy" && (
+                        <p className="mt-2">
+                          <Link
+                            href="/conseils"
+                            className="inline-flex items-center justify-center rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white shadow-md shadow-teal-950/25 transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-teal-600 dark:hover:bg-teal-500"
+                            onClick={() => setOpen(false)}
+                          >
+                            Voir les conseils DIY
+                          </Link>
+                        </p>
+                      )}
+                      {repairClosureChoice === "sav" && (
+                        <p className="mt-2">
+                          <Link
+                            href="/"
+                            className="inline-flex items-center justify-center rounded-xl border border-ink/15 bg-canvas-muted/40 px-3 py-2 text-xs font-bold text-ink transition hover:bg-canvas-muted/60 dark:border-white/15 dark:bg-white/5"
+                            onClick={() => setOpen(false)}
+                          >
+                            Retour à l’accueil
+                          </Link>
+                        </p>
+                      )}
                       <button
                         type="button"
                         onClick={reset}
@@ -560,94 +787,160 @@ export function SiteChatbot() {
                     <p>{CHOICES.find((c) => c.id === "diy")?.label ?? ""}</p>
                   </Bubble>
 
-                  {(phase === "diy_loading_ref" || phase === "diy_metier") && (
+                  {phase === "diy_kind" && (
                     <>
                       <Bubble role="assistant">
                         <p>
-                          D’abord choisis le <strong className="font-medium text-ink">métier</strong> (comme sur
-                          le site), puis tu pourras préciser la prestation.
+                          Choisis la catégorie qui correspond le mieux :{" "}
+                          <strong className="font-medium text-ink">installation</strong>,{" "}
+                          <strong className="font-medium text-ink">rénovation</strong> ou{" "}
+                          <strong className="font-medium text-ink">réparation</strong> (dépannage ciblé). Ensuite on
+                          prendra ton corps de métier et le questionnaire.
                         </p>
                       </Bubble>
-                      {phase === "diy_loading_ref" ? (
-                        <LoadingLine />
-                      ) : (
-                        diyRef && (
-                          <div className="space-y-2 pt-0.5">
-                            <label className="text-xs font-medium text-ink-soft">Type d’artisan / métier</label>
-                            <select
-                              value={diyMetierId}
-                              onChange={(e) => {
-                                setDiyMetierId(e.target.value);
-                                setDiyPrestationId("");
-                              }}
-                              className="w-full rounded-xl border border-ink/15 bg-canvas-muted/30 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-white/15 dark:bg-white/5"
-                            >
-                              <option value="">— Choisis un métier —</option>
-                              {diyRef.metiers.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.label}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              disabled={!diyMetierId}
-                              onClick={() => setPhase("diy_prestation")}
-                              className="w-full rounded-xl bg-teal-700 px-3 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
-                            >
-                              Continuer
-                            </button>
-                          </div>
-                        )
-                      )}
-                    </>
-                  )}
-
-                  {phase === "diy_prestation" && diyRef && diyMetierId && (
-                    <>
-                      <Bubble role="assistant">
-                        <p>
-                          Métier :{" "}
-                          <strong className="font-medium text-ink">
-                            {diyRef.metiers.find((m) => m.id === diyMetierId)?.label ?? diyMetierId}
-                          </strong>
-                          . Choisis maintenant la <strong className="font-medium text-ink">prestation</strong> la
-                          plus proche de ton projet.
-                        </p>
-                      </Bubble>
-                      <div className="space-y-2 pt-0.5">
-                        <label className="text-xs font-medium text-ink-soft">Prestation</label>
-                        <select
-                          value={diyPrestationId}
-                          onChange={(e) => setDiyPrestationId(e.target.value)}
-                          className="w-full rounded-xl border border-ink/15 bg-canvas-muted/30 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-white/15 dark:bg-white/5"
-                        >
-                          <option value="">— Choisis une prestation —</option>
-                          {(diyRef.prestationsByMetierId[diyMetierId] ?? []).map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.label}
-                            </option>
-                          ))}
-                        </select>
-                        {diyError ? <p className="text-xs text-amber-800 dark:text-amber-200">{diyError}</p> : null}
-                        <button
-                          type="button"
-                          disabled={!diyPrestationId}
-                          onClick={() => void loadDiyGuide()}
-                          className="w-full rounded-xl bg-teal-700 px-3 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
-                        >
-                          Voir le guide
-                        </button>
-                        <p className="text-[10px] leading-snug text-ink-soft">
-                          Le guide est enregistré sur la page{" "}
-                          <Link href="/conseils" className="font-medium text-accent underline" onClick={() => setOpen(false)}>
-                            Conseils DIY
-                          </Link>{" "}
-                          pour le référencement (nouvelle fiche si besoin).
-                        </p>
+                      <div className="flex flex-col gap-2 pt-0.5">
+                        {DIY_KIND_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => void startDiyAfterKindPick(opt.id)}
+                            className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 dark:border-white/10 dark:hover:bg-white/5"
+                          >
+                            <span className="block">{opt.label}</span>
+                            <span className="mt-0.5 block text-xs font-normal text-ink-soft">{opt.hint}</span>
+                          </button>
+                        ))}
                       </div>
                     </>
                   )}
+
+                  {phase === "diy_loading_ref" && (
+                    <Bubble role="assistant">
+                      <LoadingLine />
+                      <p className="mt-2 text-xs text-ink-soft">Chargement des domaines…</p>
+                    </Bubble>
+                  )}
+
+                  {phase === "diy_domaine" && diyRef && diyProjectKind && (
+                    <>
+                      <Bubble role="assistant">
+                        <p>
+                          <span className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                            Niveau 1 — Nature du projet :{" "}
+                          </span>
+                          <strong className="font-medium text-ink">
+                            {DIY_KIND_OPTIONS.find((o) => o.id === diyProjectKind)?.label ?? diyProjectKind}
+                          </strong>
+                        </p>
+                        <p className="mt-2">
+                          <strong className="font-medium text-ink">Niveau 2 — Corps de métier</strong> : choisis le
+                          domaine le plus proche (référentiel identique à la recherche du site).
+                        </p>
+                      </Bubble>
+                      <div className="space-y-2 pt-0.5">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                          Domaine
+                        </label>
+                        <select
+                          value={diyDomaineId}
+                          onChange={(e) => setDiyDomaineId(e.target.value)}
+                          className="w-full rounded-xl border border-ink/15 bg-canvas-muted/30 px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-white/15 dark:bg-white/5"
+                        >
+                          <option value="">— Choisis un domaine —</option>
+                          {diyRef.metiers.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!diyDomaineId}
+                          onClick={() => {
+                            setDiyWizardLevel("l3");
+                            setDiyWizardAnswers({});
+                            setDiyError(null);
+                            setPhase("diy_wizard");
+                          }}
+                          className="w-full rounded-xl bg-teal-700 px-3 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 transition enabled:hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-600 enabled:dark:hover:bg-teal-500"
+                        >
+                          Continuer — questionnaire (niveaux 3 à 9)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDiyProjectKind("");
+                            setDiyRef(null);
+                            setDiyError(null);
+                            setPhase("diy_kind");
+                          }}
+                          className="w-full text-xs font-medium text-accent hover:underline"
+                        >
+                          Changer la catégorie (installation / rénovation / réparation)
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {diyWizardPayload && diyRef && diyProjectKind && diyDomaineId && diyWizardLevel ? (
+                    <>
+                      <Bubble role="assistant">
+                        <p className="text-xs text-ink-soft">
+                          Niveau 1 :{" "}
+                          {DIY_KIND_OPTIONS.find((o) => o.id === diyProjectKind)?.label ?? diyProjectKind} · Niveau 2 :{" "}
+                          {diyRef.metiers.find((m) => m.id === diyDomaineId)?.label ?? diyDomaineId}
+                        </p>
+                        <p className="mt-2 text-xs font-semibold text-ink">{diyWizardPayload.wq.sectionTitle}</p>
+                        <p className="mt-1">{diyWizardPayload.wq.question}</p>
+                      </Bubble>
+                      <div className="flex flex-col gap-2 pt-0.5">
+                        {diyWizardPayload.wq.options.map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setDiyError(null);
+                              const level = diyWizardLevel;
+                              if (!level) return;
+                              const i = WIZARD_LEVEL_ORDER.indexOf(level);
+                              const nextAnswers = { ...diyWizardAnswers, [level]: opt.id };
+                              if (i >= WIZARD_LEVEL_ORDER.length - 1) {
+                                void loadDiyGuide(nextAnswers);
+                              } else {
+                                setDiyWizardAnswers(nextAnswers);
+                                setDiyWizardLevel(WIZARD_LEVEL_ORDER[i + 1]);
+                              }
+                            }}
+                            className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 dark:border-white/10 dark:hover:bg-white/5"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                        {diyWizardPayload.idx === WIZARD_LEVEL_ORDER.length - 1 ? (
+                          <p className="text-[10px] text-ink-soft">
+                            Dernière réponse : envoi automatique du guide (même parcours = fiche existante).
+                          </p>
+                        ) : null}
+                        {diyError ? (
+                          <p className="text-xs text-amber-800 dark:text-amber-200">{diyError}</p>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => handleWizardBack()}
+                          className="text-xs font-medium text-accent hover:underline"
+                        >
+                          {diyWizardPayload.idx <= 0 ? "← Modifier le domaine" : "← Niveau précédent"}
+                        </button>
+                        <p className="text-[10px] leading-snug text-ink-soft">
+                          Fiches enregistrées sur{" "}
+                          <Link href="/conseils" className="font-medium text-accent underline" onClick={() => setOpen(false)}>
+                            Conseils DIY
+                          </Link>
+                          .
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
 
                   {phase === "loading_diy_guide" && (
                     <Bubble role="assistant">

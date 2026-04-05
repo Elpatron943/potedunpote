@@ -37,11 +37,21 @@ AUTH_SECRET="⟨phrase secrète longue, ex. openssl rand -base64 32⟩"
 OPENAI_API_KEY="⟨clé⟩"
 ```
 
+**Inscription avec code OTP (e-mail)** — obligatoire en production pour envoyer le code :
+
+```env
+RESEND_API_KEY="⟨clé API Resend⟩"
+# Optionnel : expéditeur (sinon onboarding@resend.dev — limites Resend)
+RESEND_FROM_EMAIL="Inscription <noreply@ton-domaine.fr>"
+```
+
+Sans `RESEND_API_KEY`, en **développement** le code OTP est **journalisé dans le terminal** du serveur (`npm run dev`). Sans clé en **production**, l’inscription échoue avec un message d’erreur explicite.
+
 ---
 
 ## 3. Netlify (production)
 
-Déclare les **mêmes** variables : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_SECRET`, et si besoin `OPENAI_API_KEY`.
+Déclare les **mêmes** variables : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_SECRET`, `RESEND_API_KEY` (inscription), et si besoin `OPENAI_API_KEY`.
 
 ---
 
@@ -57,6 +67,9 @@ Les fichiers SQL historiques restent dans **`web/prisma/migrations/`** (référe
 
 **Table `DiyKnowledgeArticle` + contrainte `ChatbotLog`** (guides bricolage « Conseils DIY », parcours chatbot) : appliquer  
 [`web/prisma/migrations/20260405180000_diy_knowledge/migration.sql`](./prisma/migrations/20260405180000_diy_knowledge/migration.sql). Les fiches sont listées sur **`/conseils`** ; le chatbot (option « Je veux faire les travaux tout seul ») lit d’abord la base, sinon génère un guide via **OpenAI** et l’enregistre. Les nouvelles étapes journalisées utilisent `step = diy_guide`.
+
+**Table `SignupOtp`** (inscription client & pro : code à 6 chiffres par e-mail avant création du compte) : appliquer  
+[`web/prisma/migrations/20260406200000_signup_otp/migration.sql`](./prisma/migrations/20260406200000_signup_otp/migration.sql).
 
 ---
 

@@ -77,6 +77,22 @@ model User {
   chatbotLogs    ChatbotLog[]
 }
 
+/// Inscription en attente : mot de passe déjà hashé, code OTP envoyé par e-mail (une ligne par e-mail).
+model SignupOtp {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  codeHash     String
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  name         String?
+  passwordHash String
+  role         UserRole
+  lastSentAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
 /// Échanges enregistrés depuis le widget « Bot de ton pote » (pas de fichier image en base).
 model ChatbotLog {
   id              String   @id @default(cuid())
@@ -143,6 +159,8 @@ model ArtisanProfile {
   verifiedAt   DateTime?
   /// Affiché uniquement si abonnement premium actif
   phonePublic  String?
+  /// Optionnel : site, réseaux — { "website"?, "instagram"?, "facebook"?, "linkedin"? }
+  contactLinks Json?
   stripeSubId  String?
   premiumUntil DateTime?
   /// Clientèle : particuliers

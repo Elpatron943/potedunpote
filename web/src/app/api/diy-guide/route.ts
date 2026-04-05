@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { createId } from "@paralleldrive/cuid2";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
@@ -5,6 +7,13 @@ import OpenAI from "openai";
 import { getSession } from "@/lib/auth-session";
 import { logChatbotExchange } from "@/lib/chatbot-log";
 import {
+  formatWizardAnswersForPrompt,
+  stableWizardKey,
+  validateWizardAnswers,
+  type DiyProjectKind,
+} from "@/lib/diy-wizard-qcm";
+import {
+  getBtpMetierFromRef,
   getBtpMetierLabelFromRef,
   getBtpReferentiel,
   getPrestationActiviteLabel,
@@ -20,6 +29,8 @@ type GuideJson = {
   bodyMarkdown?: string;
 };
 
+const DIY_KIND_VALUES = new Set(["installation", "renovation", "reparation"]);
+
 function parseGuideJson(raw: string): GuideJson | null {
   try {
     const o = JSON.parse(raw) as unknown;
@@ -30,33 +41,160 @@ function parseGuideJson(raw: string): GuideJson | null {
   }
 }
 
+function normalizeDescription(raw: string): string {
+  return raw.trim().replace(/\s+/g, " ").slice(0, 2000);
+}
+
+function hash16(input: string): string {
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+/** Ancien flux : seulement texte + type. */
+function fingerprintTextOnly(kind: string, normalizedDesc: string): { slug: string; prestationId: string } {
+  const h = hash16(`${kind}\n${normalizedDesc}`);
+  return { slug: `${kind}-${h}`, prestationId: `fp-${h}` };
+}
+
+function kindPromptLabel(kind: string): string {
+  if (kind === "installation") {
+    return "Installation — travaux neufs, première pose, création ou ajout d’équipement (pas une simple réfection de l’existant).";
+  }
+  if (kind === "renovation") {
+    return "Rénovation / réfection — reprise de l’existant, remplacement, mise à jour, remise en état.";
+  }
+  if (kind === "reparation") {
+    return "Réparation / dépannage — remise en service, correction d’une panne ou d’un défaut ciblé (pas un chantier neuf ni une rénovation globale).";
+  }
+  return kind;
+}
+
+function defaultTitleKindFragment(kind: string): string {
+  if (kind === "installation") return "installation";
+  if (kind === "renovation") return "rénovation";
+  if (kind === "reparation") return "réparation";
+  return kind;
+}
+
 export async function POST(request: Request) {
-  let body: { metierId?: string; prestationId?: string; clientSessionId?: string };
+  let body: {
+    metierId?: string;
+    prestationId?: string;
+    projectKind?: string;
+    projectDescription?: string;
+    wizardAnswers?: unknown;
+    clientSessionId?: string;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
   }
 
-  const metierId = typeof body.metierId === "string" ? body.metierId.trim() : "";
-  const prestationId = typeof body.prestationId === "string" ? body.prestationId.trim() : "";
   const clientSessionId =
     typeof body.clientSessionId === "string" && body.clientSessionId.trim().length > 0
       ? body.clientSessionId.trim().slice(0, 80)
       : null;
 
-  if (!metierId || !prestationId) {
-    return NextResponse.json({ error: "metierId et prestationId requis" }, { status: 400 });
-  }
+  const btpMetier = typeof body.metierId === "string" ? body.metierId.trim() : "";
+  const btpPresta = typeof body.prestationId === "string" ? body.prestationId.trim() : "";
+  const projectKindRaw = typeof body.projectKind === "string" ? body.projectKind.trim() : "";
+  const projectDescriptionRaw =
+    typeof body.projectDescription === "string" ? body.projectDescription : "";
+
+  let metierId: string;
+  let prestationId: string;
+  let slug: string;
+  let contextLabelForAi: string;
+  let logUserSummary: string;
+  let titleHintUsesKind: boolean;
 
   const ref = await getBtpReferentiel();
-  if (!isValidPrestationPair(ref, metierId, prestationId)) {
-    return NextResponse.json({ error: "Combinaison métier / prestation invalide" }, { status: 400 });
-  }
 
-  const slug = `${metierId}-${prestationId}`;
-  const metierLabel = getBtpMetierLabelFromRef(ref, metierId) ?? metierId;
-  const prestationLabel = getPrestationActiviteLabel(ref, metierId, prestationId) ?? prestationId;
+  const hasWizardObject =
+    typeof body.wizardAnswers === "object" &&
+    body.wizardAnswers !== null &&
+    !Array.isArray(body.wizardAnswers);
+
+  const isQcmWizard =
+    DIY_KIND_VALUES.has(projectKindRaw) && btpMetier.length > 0 && hasWizardObject;
+
+  if (isQcmWizard) {
+    const kind = projectKindRaw as DiyProjectKind;
+    if (!getBtpMetierFromRef(ref, btpMetier)) {
+      return NextResponse.json({ error: "Domaine (corps de métier) inconnu ou invalide." }, { status: 400 });
+    }
+    const wizardAnswers = body.wizardAnswers as Record<string, string>;
+    if (!validateWizardAnswers(kind, btpMetier, wizardAnswers)) {
+      return NextResponse.json(
+        { error: "Réponses QCM incomplètes ou invalides (niveaux 3 à 9 requis)." },
+        { status: 400 },
+      );
+    }
+    const metierLabel = getBtpMetierLabelFromRef(ref, btpMetier) ?? btpMetier;
+    const wizardBlock = formatWizardAnswersForPrompt(kind, btpMetier, metierLabel, wizardAnswers);
+    const fpPayload = [projectKindRaw, btpMetier, stableWizardKey(wizardAnswers)].join("\n");
+    const h = hash16(fpPayload);
+    metierId = projectKindRaw;
+    prestationId = `fp-${h}`;
+    slug = `${projectKindRaw}-${h}`;
+    contextLabelForAi = `${kindPromptLabel(projectKindRaw)}
+
+Parcours guidé (QCM) — à exploiter pour personnaliser le guide :
+
+${wizardBlock}`;
+    logUserSummary = `${projectKindRaw} | ${metierLabel} | ${stableWizardKey(wizardAnswers)}`;
+    titleHintUsesKind = true;
+  } else if (projectKindRaw.length > 0 || projectDescriptionRaw.trim().length > 0) {
+    if (!DIY_KIND_VALUES.has(projectKindRaw)) {
+      return NextResponse.json(
+        { error: "projectKind doit être « installation », « renovation » ou « reparation »." },
+        { status: 400 },
+      );
+    }
+    if (btpMetier || btpPresta) {
+      return NextResponse.json(
+        {
+          error:
+            "Après le domaine (corps de métier), envoie l’objet wizardAnswers avec les niveaux 3 à 9 complétés.",
+        },
+        { status: 400 },
+      );
+    }
+    const normalized = normalizeDescription(projectDescriptionRaw);
+    if (normalized.length < 15) {
+      return NextResponse.json(
+        { error: "Décris ton projet en au moins quelques mots (15 caractères minimum)." },
+        { status: 400 },
+      );
+    }
+    const fp = fingerprintTextOnly(projectKindRaw, normalized);
+    metierId = projectKindRaw;
+    prestationId = fp.prestationId;
+    slug = fp.slug;
+    contextLabelForAi = `${kindPromptLabel(projectKindRaw)}\n\nProjet décrit par le particulier :\n« ${normalized} »`;
+    logUserSummary = `${projectKindRaw}: ${normalized.slice(0, 500)}`;
+    titleHintUsesKind = true;
+  } else if (btpMetier && btpPresta) {
+    if (!isValidPrestationPair(ref, btpMetier, btpPresta)) {
+      return NextResponse.json({ error: "Combinaison métier / prestation invalide" }, { status: 400 });
+    }
+    metierId = btpMetier;
+    prestationId = btpPresta;
+    slug = `${btpMetier}-${btpPresta}`;
+    const metierLabel = getBtpMetierLabelFromRef(ref, btpMetier) ?? btpMetier;
+    const prestationLabel = getPrestationActiviteLabel(ref, btpMetier, btpPresta) ?? btpPresta;
+    contextLabelForAi = `Métier BTP : « ${metierLabel} »\nPrestation / type d’intervention : « ${prestationLabel} »`;
+    logUserSummary = `${metierId} / ${prestationId}`;
+    titleHintUsesKind = false;
+  } else {
+    return NextResponse.json(
+      {
+        error:
+          "Indique installation, rénovation ou réparation + domaine + QCM (wizardAnswers), ou une description seule (15 caractères min.), ou l’ancien couple métier / prestation.",
+      },
+      { status: 400 },
+    );
+  }
 
   const supabase = getSupabaseAdmin();
   const { data: existing } = await supabase
@@ -93,14 +231,16 @@ export async function POST(request: Request) {
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   const openai = new OpenAI({ apiKey });
 
-  const userPrompt = `Métier BTP : « ${metierLabel} »
-Prestation / type d’intervention : « ${prestationLabel} »
+  const userPrompt = `${contextLabelForAi}
 
 Le lecteur est un particulier qui veut réaliser ou préparer lui-même les travaux (bricolage / autoconstruction raisonnable).
-Rédige un guide structuré : matériel courant, étapes ordonnées, précautions de sécurité, limites du DIY, quand faire appel à un professionnel.
+Rédige un guide structuré adapté à SON projet décrit : matériel courant, étapes ordonnées, précautions de sécurité, limites du DIY, quand faire appel à un professionnel.
+Intègre explicitement les réponses de l’arbre de décision (quand il y en a) dans tes recommandations.
 Ton : clair, pédagogique, en français.`;
 
-  let title = `Guide : ${prestationLabel} (${metierLabel})`;
+  let title = titleHintUsesKind
+    ? `Guide DIY : ${defaultTitleKindFragment(projectKindRaw)}`
+    : "Guide DIY";
   let excerpt = "";
   let bodyMarkdown = "";
 
@@ -156,24 +296,86 @@ Réponds UNIQUEMENT avec un JSON valide contenant exactement ces clés :
   });
 
   if (insErr) {
-    if (insErr.code === "23505") {
-      const { data: again } = await supabase
+    const pgCode = String(insErr.code ?? "");
+
+    /** Doublon : une autre requête a pu insérer entre le SELECT et l’INSERT, ou contrainte unique sur (metierId, prestationId). */
+    if (pgCode === "23505") {
+      const { data: bySlug } = await supabase
         .from("DiyKnowledgeArticle")
         .select("slug,title,excerpt,bodyMarkdown")
         .eq("slug", slug)
         .maybeSingle();
-      if (again) {
+      if (bySlug) {
         return NextResponse.json({
-          slug: again.slug as string,
-          title: again.title as string,
-          excerpt: (again.excerpt as string | null) ?? null,
-          bodyMarkdown: again.bodyMarkdown as string,
+          slug: bySlug.slug as string,
+          title: bySlug.title as string,
+          excerpt: (bySlug.excerpt as string | null) ?? null,
+          bodyMarkdown: bySlug.bodyMarkdown as string,
+          source: "database" as const,
+        });
+      }
+      const { data: byPair } = await supabase
+        .from("DiyKnowledgeArticle")
+        .select("slug,title,excerpt,bodyMarkdown")
+        .eq("metierId", metierId)
+        .eq("prestationId", prestationId)
+        .maybeSingle();
+      if (byPair) {
+        return NextResponse.json({
+          slug: byPair.slug as string,
+          title: byPair.title as string,
+          excerpt: (byPair.excerpt as string | null) ?? null,
+          bodyMarkdown: byPair.bodyMarkdown as string,
           source: "database" as const,
         });
       }
     }
-    console.error("[diy-guide]", insErr);
-    return NextResponse.json({ error: "Enregistrement impossible" }, { status: 500 });
+
+    if (pgCode === "42703") {
+      console.error("[diy-guide]", insErr);
+      return NextResponse.json(
+        {
+          error:
+            "Table DiyKnowledgeArticle incomplète en base. Exécute la migration SQL diy_knowledge sur Supabase.",
+        },
+        { status: 500 },
+      );
+    }
+
+    if (pgCode === "42P01" || /relation.*does not exist/i.test(insErr.message ?? "")) {
+      console.error("[diy-guide]", insErr);
+      return NextResponse.json(
+        {
+          error:
+            "La table DiyKnowledgeArticle est absente : exécute le SQL de la migration prisma/migrations/20260405180000_diy_knowledge/migration.sql dans Supabase (SQL Editor).",
+        },
+        { status: 500 },
+      );
+    }
+
+    console.error("[diy-guide] insert failed", {
+      code: insErr.code,
+      message: insErr.message,
+      details: insErr.details,
+      hint: insErr.hint,
+    });
+
+    const hint =
+      pgCode === "42501" || /permission denied|RLS/i.test(insErr.message ?? "")
+        ? " Vérifie que SUPABASE_SERVICE_ROLE_KEY est bien la clé « service_role » du projet Supabase (pas la clé anon)."
+        : "";
+
+    const devTail =
+      process.env.NODE_ENV === "development"
+        ? ` — ${insErr.message || ""} (${pgCode})`
+        : " Consulte les logs serveur (terminal ou hébergeur) pour le détail.";
+
+    return NextResponse.json(
+      {
+        error: `Enregistrement du guide impossible.${hint}${devTail}`,
+      },
+      { status: 500 },
+    );
   }
 
   const session = await getSession();
@@ -182,7 +384,7 @@ Réponds UNIQUEMENT avec un JSON valide contenant exactement ces clés :
     userId: session?.userId ?? null,
     choiceId: "diy",
     step: "diy_guide",
-    userText: `${metierId} / ${prestationId}`,
+    userText: logUserSummary.slice(0, 6000),
     assistantText: `[généré] ${title} — /conseils/${slug}`,
     usedVision: false,
   });

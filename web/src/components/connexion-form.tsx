@@ -3,11 +3,16 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
+import { ARTISAN_SUBSCRIBE_NEXT } from "@/lib/artisan-subscribe-nav";
+import { PORTAIL_ACHETEUR_CONNEXION, PORTAIL_PRO_CONNEXION } from "@/lib/auth-portals";
 
-export function ConnexionForm() {
+export type ConnexionPortal = "acheteur" | "pro";
+
+export function ConnexionForm({ portal }: { portal: ConnexionPortal }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextUrl = searchParams.get("next") ?? "/";
+  const defaultNext = portal === "pro" ? ARTISAN_SUBSCRIBE_NEXT : "/";
+  const nextUrl = searchParams.get("next") ?? defaultNext;
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +32,7 @@ export function ConnexionForm() {
       const body =
         mode === "login"
           ? { email, password }
-          : { email, password, name: name || undefined };
+          : { email, password, name: name || undefined, portal };
 
       const res = await fetch(path, {
         method: "POST",
@@ -51,6 +56,11 @@ export function ConnexionForm() {
       setPending(false);
     }
   }
+
+  const otherPortalHref =
+    portal === "acheteur" ? PORTAIL_PRO_CONNEXION : PORTAIL_ACHETEUR_CONNEXION;
+  const otherPortalLabel =
+    portal === "acheteur" ? "Espace professionnel →" : "← Portail particuliers (avis)";
 
   return (
     <div className="mx-auto max-w-md space-y-6">
@@ -150,11 +160,21 @@ export function ConnexionForm() {
         </button>
       </form>
 
-      <p className="text-center text-sm text-ink-soft">
-        <Link href="/" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
-          ← Retour à l’accueil
-        </Link>
-      </p>
+      <div className="space-y-2 text-center text-sm text-ink-soft">
+        <p>
+          <Link href="/" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+            ← Retour à l’accueil
+          </Link>
+        </p>
+        <p>
+          <Link
+            href={otherPortalHref}
+            className="font-medium text-ink-soft underline decoration-ink/20 underline-offset-2 hover:text-ink hover:decoration-ink/40"
+          >
+            {otherPortalLabel}
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

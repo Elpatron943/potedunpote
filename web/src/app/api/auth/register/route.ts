@@ -7,7 +7,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: Request) {
-  let body: { email?: string; password?: string; name?: string };
+  let body: { email?: string; password?: string; name?: string; portal?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -17,6 +17,12 @@ export async function POST(req: Request) {
   const email = (body.email ?? "").trim().toLowerCase();
   const password = body.password ?? "";
   const name = (body.name ?? "").trim() || null;
+  const portalRaw = (body.portal ?? "acheteur").trim().toLowerCase();
+  const role =
+    portalRaw === "pro" ? ("ARTISAN" as const) : ("CLIENT" as const);
+  if (portalRaw !== "pro" && portalRaw !== "acheteur") {
+    return NextResponse.json({ error: "Portail d’inscription invalide." }, { status: 400 });
+  }
 
   if (!EMAIL_RE.test(email)) {
     return NextResponse.json({ error: "Adresse e-mail invalide." }, { status: 400 });
@@ -44,7 +50,7 @@ export async function POST(req: Request) {
       id,
       email,
       name,
-      role: "CLIENT",
+      role,
       passwordHash,
       emailVerified: now,
       createdAt: now,

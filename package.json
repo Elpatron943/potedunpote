@@ -1,0 +1,15 @@
+{
+  "name": "lepotedunpote",
+  "private": true,
+  "description": "Racine du dépôt — l'application Next.js vit dans ./web",
+  "scripts": {
+    "dev": "npm run dev --prefix web",
+    "build": "npm run build --prefix web",
+    "start": "npm run start --prefix web",
+    "lint": "npm run lint --prefix web",
+    "db:migrate": "npm run db:migrate --prefix web",
+    "db:studio": "npm run db:studio --prefix web",
+    "db:generate": "npm run db:generate --prefix web",
+    "postinstall": "npm install --prefix web"
+  }
+}

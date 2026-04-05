@@ -1,0 +1,149 @@
+// Schéma initial : avis BTP, profils artisans (premium), médias chantiers.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CLIENT
+  ARTISAN
+  ADMIN
+}
+
+enum ReviewStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+}
+
+/// Fourchette de prix ressentie par le client
+enum PriceBracket {
+  UNDER_EXPECTED
+  AS_EXPECTED
+  ABOVE_EXPECTED
+  MUCH_ABOVE
+}
+
+enum DeadlinesKept {
+  YES
+  PARTIAL
+  NO
+}
+
+enum AvailabilityRating {
+  EASY
+  OK
+  DIFFICULT
+}
+
+enum PaymentType {
+  BANK_TRANSFER
+  CHECK
+  CASH
+  CARD
+  INSTALLMENTS
+  OTHER
+}
+
+/// Cohérence montant payé vs devis initial
+enum QuoteAccuracy {
+  MATCHED
+  SLIGHTLY_OVER
+  MUCH_OVER
+  UNDER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole @default(CLIENT)
+  /// Hash bcrypt (connexion email / mot de passe) — null si compte sans mot de passe (futur SSO).
+  passwordHash   String?
+  /// Validation email : renseignée à l’inscription pour l’instant ; envoi de lien à brancher plus tard.
+  emailVerified  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  artisanProfile ArtisanProfile?
+  reviews        Review[]
+}
+
+/// Compte revendiqué par un artisan (lié au SIREN) — options premium Stripe plus tard
+model ArtisanProfile {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siren        String    @unique
+  verifiedAt   DateTime?
+  /// Affiché uniquement si abonnement premium actif
+  phonePublic  String?
+  stripeSubId  String?
+  premiumUntil DateTime?
+  /// Clientèle : particuliers
+  servesParticuliers Boolean @default(true)
+  /// Clientèle : professionnels / entreprises
+  servesProfessionnels Boolean @default(false)
+  /// Sous-activités cochées par famille métier : { "plomberie": ["robinetterie", ...], ... } (ids stables, voir `btp-sous-activites.ts`)
+  sousActivitesSelection Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  projectPhotos ProjectPhoto[]
+}
+
+model Review {
+  id            String               @id @default(cuid())
+  siren         String
+  authorId      String
+  author        User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  ratingOverall Int
+  comment       String?
+  priceBracket  PriceBracket?
+  deadlinesKept DeadlinesKept?
+  availability  AvailabilityRating?
+  paymentType   PaymentType?
+  quoteVsPaid   QuoteAccuracy?
+  /// Famille métier de la prestation réalisée (id `BTP_METIERS`).
+  prestationMetierId   String?
+  /// Sous-activité réalisée (id stable `btp-sous-activites.ts`).
+  prestationActiviteId String?
+  /// Montant total payé TTC ou principal, en centimes d’euro (optionnel).
+  amountPaidCents      Int?
+  /// Surface de chantier en m² (prestations au m²) — optionnel.
+  surfaceM2            Float?
+  status        ReviewStatus         @default(PENDING)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  response ReviewResponse?
+
+  @@unique([authorId, siren])
+  @@index([siren])
+  @@index([status])
+}
+
+/// Réponse artisan à un avis (disponibilité standard une fois compte vérifié)
+model ReviewResponse {
+  id        String   @id @default(cuid())
+  reviewId  String   @unique
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model ProjectPhoto {
+  id         String         @id @default(cuid())
+  artisanId  String
+  artisan    ArtisanProfile @relation(fields: [artisanId], references: [id], onDelete: Cascade)
+  storageKey String
+  caption    String?
+  createdAt  DateTime       @default(now())
+
+  @@index([artisanId])
+}

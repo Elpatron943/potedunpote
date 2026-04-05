@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * SIRENs des profils Pro (`premiumUntil` futur) ayant déclaré au moins une des
@@ -10,16 +10,17 @@ export async function getSirensWithDeclaredSousActivites(
 ): Promise<Set<string>> {
   if (actIds.length === 0) return new Set();
 
-  const now = new Date();
-  const rows = await prisma.artisanProfile.findMany({
-    where: {
-      premiumUntil: { gt: now },
-    },
-    select: { siren: true, sousActivitesSelection: true },
-  });
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+  const { data: rows, error } = await supabase
+    .from("ArtisanProfile")
+    .select("siren, sousActivitesSelection")
+    .gt("premiumUntil", now);
+
+  if (error) throw error;
 
   const matches = new Set<string>();
-  for (const row of rows) {
+  for (const row of rows ?? []) {
     const raw = row.sousActivitesSelection;
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
     const obj = raw as Record<string, unknown>;
@@ -27,7 +28,7 @@ export async function getSirensWithDeclaredSousActivites(
     if (!Array.isArray(list)) continue;
     const declared = new Set(list.filter((x): x is string => typeof x === "string"));
     if (actIds.some((id) => declared.has(id))) {
-      matches.add(row.siren);
+      matches.add(row.siren as string);
     }
   }
   return matches;

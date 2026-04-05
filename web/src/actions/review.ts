@@ -1,26 +1,38 @@
 "use server";
 
-import {
+import { createId } from "@paralleldrive/cuid2";
+import { revalidatePath } from "next/cache";
+import { getBtpMetier } from "@/lib/btp-metiers";
+import { isPrestationPricedBySurface, isValidPrestationPair } from "@/lib/btp-sous-activites";
+import type {
   AvailabilityRating,
   DeadlinesKept,
   PaymentType,
   PriceBracket,
-  Prisma,
   QuoteAccuracy,
-} from "@prisma/client";
-import { revalidatePath } from "next/cache";
-import { getBtpMetier } from "@/lib/btp-metiers";
-import { isPrestationPricedBySurface, isValidPrestationPair } from "@/lib/btp-sous-activites";
+} from "@/lib/db-enums";
 import { getSession } from "@/lib/auth-session";
-import { prisma } from "@/lib/db";
 import { parseOptionalAmountEurosToCents } from "@/lib/parse-amount-euros";
 import { parseOptionalSurfaceM2 } from "@/lib/parse-surface-m2";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-const PRICE_SET = new Set<string>(Object.values(PriceBracket));
-const DEAD_SET = new Set<string>(Object.values(DeadlinesKept));
-const AVAIL_SET = new Set<string>(Object.values(AvailabilityRating));
-const PAY_SET = new Set<string>(Object.values(PaymentType));
-const QUOTE_SET = new Set<string>(Object.values(QuoteAccuracy));
+const PRICE_SET = new Set<string>([
+  "UNDER_EXPECTED",
+  "AS_EXPECTED",
+  "ABOVE_EXPECTED",
+  "MUCH_ABOVE",
+]);
+const DEAD_SET = new Set<string>(["YES", "PARTIAL", "NO"]);
+const AVAIL_SET = new Set<string>(["EASY", "OK", "DIFFICULT"]);
+const PAY_SET = new Set<string>([
+  "BANK_TRANSFER",
+  "CHECK",
+  "CASH",
+  "CARD",
+  "INSTALLMENTS",
+  "OTHER",
+]);
+const QUOTE_SET = new Set<string>(["MATCHED", "SLIGHTLY_OVER", "MUCH_OVER", "UNDER"]);
 
 function parseOptionalEnum<T extends string>(
   raw: FormDataEntryValue | null,
@@ -53,10 +65,13 @@ export async function submitReview(
     return { ok: false, error: "Tu dois être connecté pour déposer un avis." };
   }
 
-  const artisan = await prisma.artisanProfile.findUnique({
-    where: { userId: session.userId },
-    select: { siren: true },
-  });
+  const supabase = getSupabaseAdmin();
+  const { data: artisan } = await supabase
+    .from("ArtisanProfile")
+    .select("siren")
+    .eq("userId", session.userId)
+    .maybeSingle();
+
   if (artisan?.siren === siren) {
     return {
       ok: false,
@@ -144,33 +159,37 @@ export async function submitReview(
     }
   }
 
-  try {
-    await prisma.review.create({
-      data: {
-        siren,
-        authorId: session.userId,
-        ratingOverall: rating,
-        comment: commentOut,
-        priceBracket: priceBracket ?? undefined,
-        deadlinesKept: deadlinesKept ?? undefined,
-        availability: availability ?? undefined,
-        paymentType: paymentType ?? undefined,
-        quoteVsPaid: quoteVsPaid ?? undefined,
-        prestationMetierId: prestationMetierId ?? undefined,
-        prestationActiviteId: prestationActiviteId ?? undefined,
-        amountPaidCents: amountPaidCents ?? undefined,
-        surfaceM2: surfaceM2 ?? undefined,
-        status: "PENDING",
-      },
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+  const now = new Date().toISOString();
+  const id = createId();
+
+  const { error } = await supabase.from("Review").insert({
+    id,
+    siren,
+    authorId: session.userId,
+    ratingOverall: rating,
+    comment: commentOut,
+    priceBracket: priceBracket ?? null,
+    deadlinesKept: deadlinesKept ?? null,
+    availability: availability ?? null,
+    paymentType: paymentType ?? null,
+    quoteVsPaid: quoteVsPaid ?? null,
+    prestationMetierId: prestationMetierId ?? null,
+    prestationActiviteId: prestationActiviteId ?? null,
+    amountPaidCents: amountPaidCents ?? null,
+    surfaceM2: surfaceM2 ?? null,
+    status: "PENDING",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
       return {
         ok: false,
         error: "Tu as déjà déposé un avis pour cette entreprise.",
       };
     }
-    throw e;
+    throw error;
   }
 
   revalidatePath(`/entreprise/${siren}`);

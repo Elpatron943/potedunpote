@@ -4,7 +4,7 @@ import type {
   PaymentType,
   PriceBracket,
   QuoteAccuracy,
-} from "@prisma/client";
+} from "@/lib/db-enums";
 
 export const PRICE_BRACKET_LABELS: Record<PriceBracket, string> = {
   UNDER_EXPECTED: "Moins cher que prévu",

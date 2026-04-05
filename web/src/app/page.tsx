@@ -179,7 +179,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             className="animate-home-fade-up-delay mx-auto max-w-xl text-balance font-[family-name:var(--font-display)] text-3xl leading-[1.2] text-ink sm:max-w-4xl sm:text-4xl sm:leading-[1.15] md:text-5xl md:leading-[1.12]"
             style={{ fontFeatureSettings: '"liga" 1, "kern" 1' }}
           >
-            Je connais le <HeroHighlight>pote d&apos;un pote</HeroHighlight> qui{" "}
+            J&apos;ai le <HeroHighlight>pote d&apos;un pote</HeroHighlight> qui{" "}
             <HeroHighlight>bosse bien</HeroHighlight>{" "}
             <HeroHighlight>pour un prix correct</HeroHighlight> et{" "}
             <HeroHighlight>dans les temps</HeroHighlight>

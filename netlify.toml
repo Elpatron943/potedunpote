@@ -1,9 +1,9 @@
-# L’app Next.js est dans web/ : sans ce réglage, Netlify ne build pas Next et sert une 404.
+# L’app Next.js est dans web/ : sans base = "web", Netlify build depuis la racine et ne trouve pas l’app.
+# Sans @netlify/plugin-nextjs, Netlify ne sait pas servir Next.js (SSR / App Router) → page 404 sur *.netlify.app.
 #
-# Base PostgreSQL : Supabase (ou autre). Dans Netlify → Environment variables, définir au minimum :
-#   DATABASE_URL  = URI « Transaction pooler » (port 6543) + ?pgbouncer=true si indiqué
-#   DIRECT_URL    = URI « Direct connection » (port 5432) — pour Prisma Migrate
-#   AUTH_SECRET   = chaîne longue et aléatoire
+# Supabase : dans Netlify → Environment variables, au minimum :
+#   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, AUTH_SECRET
+#   (+ OPENAI_API_KEY si chat bot)
 #
 [build]
   base = "web"
@@ -11,3 +11,6 @@
 
 [build.environment]
   NODE_VERSION = "20"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

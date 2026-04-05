@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type PublishedPriceStats = {
   count: number;
@@ -20,39 +20,29 @@ export type PublishedPriceStats = {
 export async function getPublishedPriceStatsForSiren(
   siren: string,
 ): Promise<PublishedPriceStats | null> {
-  const agg = await prisma.review.aggregate({
-    where: {
-      siren,
-      status: "PUBLISHED",
-      amountPaidCents: { not: null },
-    },
-    _avg: { amountPaidCents: true },
-    _min: { amountPaidCents: true },
-    _max: { amountPaidCents: true },
-    _count: true,
-  });
+  const supabase = getSupabaseAdmin();
+  const { data: rows, error } = await supabase
+    .from("Review")
+    .select("amountPaidCents, surfaceM2")
+    .eq("siren", siren)
+    .eq("status", "PUBLISHED")
+    .not("amountPaidCents", "is", null);
 
-  const count = agg._count;
-  const minCents = agg._min.amountPaidCents;
-  const maxCents = agg._max.amountPaidCents;
-  const avgRaw = agg._avg.amountPaidCents;
+  if (error) throw error;
+  const list = (rows ?? []).filter((r) => r.amountPaidCents != null) as {
+    amountPaidCents: number;
+    surfaceM2: number | null;
+  }[];
 
-  if (count === 0 || minCents == null || maxCents == null || avgRaw == null) {
-    return null;
-  }
+  if (list.length === 0) return null;
 
-  const withSurface = await prisma.review.findMany({
-    where: {
-      siren,
-      status: "PUBLISHED",
-      amountPaidCents: { not: null },
-      surfaceM2: { not: null, gt: 0 },
-    },
-    select: { amountPaidCents: true, surfaceM2: true },
-  });
+  const cents = list.map((r) => r.amountPaidCents);
+  const minCents = Math.min(...cents);
+  const maxCents = Math.max(...cents);
+  const avgCents = Math.round(cents.reduce((a, b) => a + b, 0) / cents.length);
 
   const eurPerM2List: number[] = [];
-  for (const r of withSurface) {
+  for (const r of list) {
     const c = r.amountPaidCents;
     const m = r.surfaceM2;
     if (c == null || m == null || !(m > 0)) continue;
@@ -71,8 +61,8 @@ export async function getPublishedPriceStatsForSiren(
   }
 
   return {
-    count,
-    avgCents: Math.round(Number(avgRaw)),
+    count: list.length,
+    avgCents,
     minCents,
     maxCents,
     perM2,

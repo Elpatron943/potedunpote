@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReviewStatus } from "@prisma/client";
+import type { ReviewStatus } from "@/lib/db-enums";
 import { ReviewForm } from "@/components/review-form";
 import { complementKeyLabel } from "@/lib/complements-labels";
 import type { EntrepriseDetail } from "@/lib/entreprise-detail";

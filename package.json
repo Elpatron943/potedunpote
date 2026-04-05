@@ -8,6 +8,8 @@
     "start": "npm run start --prefix web",
     "lint": "npm run lint --prefix web",
     "db:migrate": "npm run db:migrate --prefix web",
+    "db:deploy": "npm run db:deploy --prefix web",
+    "db:status": "npm run db:status --prefix web",
     "db:studio": "npm run db:studio --prefix web",
     "db:generate": "npm run db:generate --prefix web",
     "postinstall": "npm install --prefix web"

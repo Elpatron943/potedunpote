@@ -43,8 +43,9 @@ OPENAI_API_KEY="⟨clé⟩"
 
 ```env
 RESEND_API_KEY="⟨clé API Resend⟩"
-# Optionnel : expéditeur (sinon onboarding@resend.dev — limites Resend)
-RESEND_FROM_EMAIL="Inscription <noreply@ton-domaine.fr>"
+# Optionnel : expéditeur (défaut : "Inscription <noreply@potedunpote.fr>")
+# IMPORTANT : l’adresse doit être autorisée (domaine vérifié dans Resend)
+RESEND_FROM_EMAIL="Inscription <noreply@potedunpote.fr>"
 ```
 
 Sans `RESEND_API_KEY`, en **développement** le code OTP est **journalisé dans le terminal** du serveur (`npm run dev`). Sans clé en **production**, l’inscription échoue avec un message d’erreur explicite.

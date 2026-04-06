@@ -3,10 +3,15 @@
  * Niveaux 1–2 sont gérés dans le widget (nature + liste référentiel).
  */
 
-export type DiyProjectKind = "installation" | "renovation" | "reparation";
+export type DiyProjectKind = "travaux" | "installation" | "renovation" | "reparation";
 
-export const WIZARD_LEVEL_ORDER = ["l3", "l4", "l5", "l6", "l7", "l8", "l9"] as const;
-export type WizardLevelId = (typeof WIZARD_LEVEL_ORDER)[number];
+const WIZARD_LEVEL_ORDER_BASE = ["l3", "l4", "l5", "l6", "l7", "l8", "l9"] as const;
+export type WizardLevelId = (typeof WIZARD_LEVEL_ORDER_BASE)[number] | "l3room" | "l3eq";
+
+export function wizardLevelOrder(kind: DiyProjectKind): WizardLevelId[] {
+  if (kind === "installation") return ["l3room", "l3eq", ...WIZARD_LEVEL_ORDER_BASE];
+  return [...WIZARD_LEVEL_ORDER_BASE];
+}
 
 export type WizardOption = { id: string; label: string };
 
@@ -42,6 +47,90 @@ function questionL3(metierId: string): WizardQuestion {
       { id: "l3-copro", label: "Majoritairement parties communes (copropriété)" },
       { id: "l3-prive", label: "Privatif uniquement (maison ou appartement), sans gros parties communes" },
     ],
+  };
+}
+
+function questionL3room(): WizardQuestion {
+  return {
+    levelId: "l3room",
+    sectionTitle: "Niveau 3 — Pièce concernée",
+    question: "Dans quelle zone se passe l’installation ?",
+    options: [
+      { id: "l3room-wc", label: "WC" },
+      { id: "l3room-sdb", label: "Salle de bain / buanderie" },
+      { id: "l3room-cuisine", label: "Cuisine" },
+      { id: "l3room-sejour", label: "Séjour / chambre / bureau" },
+      { id: "l3room-exterieur", label: "Extérieur" },
+      { id: "l3room-autre", label: "Autre / plusieurs zones" },
+    ],
+  };
+}
+
+function equipmentOptionsForRoom(roomId: string | undefined): WizardOption[] {
+  // Liste volontairement “boutons” orientée équipement, pas métier.
+  // Les IDs servent de clé stable (dédup, contexte IA).
+  if (roomId === "l3room-wc") {
+    return [
+      { id: "l3eq-chasse", label: "Chasse d’eau / mécanisme WC" },
+      { id: "l3eq-wc", label: "WC complet (pose / remplacement)" },
+      { id: "l3eq-lave-mains", label: "Lave-mains / petit lavabo" },
+      { id: "l3eq-accessoire", label: "Accessoire (abattant, bâti, fixation…)" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-sdb") {
+    return [
+      { id: "l3eq-douche", label: "Douche / colonne / paroi" },
+      { id: "l3eq-baignoire", label: "Baignoire" },
+      { id: "l3eq-vasque", label: "Meuble vasque / lavabo" },
+      { id: "l3eq-robinet", label: "Robinetterie (mitigeur, douchette…)" },
+      { id: "l3eq-seche-serviette", label: "Sèche-serviettes" },
+      { id: "l3eq-vmc", label: "VMC / extraction" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-cuisine") {
+    return [
+      { id: "l3eq-evier", label: "Évier / siphon / évacuation" },
+      { id: "l3eq-robinet", label: "Robinetterie cuisine" },
+      { id: "l3eq-hotte", label: "Hotte / extraction" },
+      { id: "l3eq-lv", label: "Lave-vaisselle (raccordement / pose)" },
+      { id: "l3eq-plaques", label: "Plaque / four (pose / raccordement)" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-sejour") {
+    return [
+      { id: "l3eq-luminaire", label: "Luminaire / plafonnier / applique" },
+      { id: "l3eq-prise", label: "Prise / interrupteur / petite élect. (hors tableau)" },
+      { id: "l3eq-radiateur", label: "Radiateur / thermostat" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-exterieur") {
+    return [
+      { id: "l3eq-luminaire", label: "Luminaire extérieur" },
+      { id: "l3eq-portail", label: "Portail / motorisation / gâche" },
+      { id: "l3eq-prise-ext", label: "Prise extérieure / éclairage" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  return [
+    { id: "l3eq-chasse", label: "Chasse d’eau / mécanisme WC" },
+    { id: "l3eq-luminaire", label: "Luminaire / électricité légère" },
+    { id: "l3eq-robinet", label: "Robinetterie / raccordement eau" },
+    { id: "l3eq-radiateur", label: "Radiateur / thermostat" },
+    { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+  ];
+}
+
+function questionL3eq(roomId: string | undefined): WizardQuestion {
+  return {
+    levelId: "l3eq",
+    sectionTitle: "Niveau 3 — Équipement à installer",
+    question:
+      "Quel équipement veux-tu installer ? (la liste dépend de la pièce choisie)",
+    options: equipmentOptionsForRoom(roomId),
   };
 }
 
@@ -169,8 +258,13 @@ export function getWizardQuestion(
   kind: DiyProjectKind,
   levelId: WizardLevelId,
   metierId: string,
+  answers?: Record<string, string>,
 ): WizardQuestion {
   switch (levelId) {
+    case "l3room":
+      return questionL3room();
+    case "l3eq":
+      return questionL3eq(answers?.l3room);
     case "l3":
       return questionL3(metierId);
     case "l4":
@@ -193,8 +287,9 @@ export function isValidOptionForLevel(
   levelId: WizardLevelId,
   metierId: string,
   optionId: string,
+  answers: Record<string, string>,
 ): boolean {
-  const q = getWizardQuestion(kind, levelId, metierId);
+  const q = getWizardQuestion(kind, levelId, metierId, answers);
   return q.options.some((o) => o.id === optionId);
 }
 
@@ -203,18 +298,21 @@ export function validateWizardAnswers(
   metierId: string,
   answers: Record<string, string>,
 ): boolean {
-  if (!metierId.trim()) return false;
-  for (const levelId of WIZARD_LEVEL_ORDER) {
+  // Pour "installation", on peut générer une fiche sans choisir un domaine BTP :
+  // la qualification pièce + équipement remplit déjà le rôle de cadrage initial.
+  if (kind !== "installation" && !metierId.trim()) return false;
+  for (const levelId of wizardLevelOrder(kind)) {
     const picked = answers[levelId];
     if (typeof picked !== "string" || !picked) return false;
-    if (!isValidOptionForLevel(kind, levelId, metierId, picked)) return false;
+    if (!isValidOptionForLevel(kind, levelId, metierId, picked, answers)) return false;
   }
   return true;
 }
 
 function kindLabelFr(kind: DiyProjectKind): string {
-  if (kind === "installation") return "Installation (neuf / pose)";
-  if (kind === "renovation") return "Rénovation (existant)";
+  if (kind === "travaux") return "Travaux (création / modification — ex : cloison, mur, ouverture, maçonnerie…)";
+  if (kind === "installation") return "Installation (pose / ajout d’équipement — ex : chasse d’eau, luminaire…)";
+  if (kind === "renovation") return "Rénovation (reprise de l’existant)";
   return "Réparation / dépannage / remise en état";
 }
 
@@ -226,9 +324,11 @@ export function formatWizardAnswersForPrompt(
 ): string {
   const lines: string[] = [];
   lines.push(`Nature du projet : ${kindLabelFr(kind)}`);
-  lines.push(`Corps de métier (référentiel) : « ${metierLabel} » (id ${metierId})`);
-  for (const levelId of WIZARD_LEVEL_ORDER) {
-    const q = getWizardQuestion(kind, levelId, metierId);
+  if (kind !== "installation") {
+    lines.push(`Corps de métier (référentiel) : « ${metierLabel} » (id ${metierId})`);
+  }
+  for (const levelId of wizardLevelOrder(kind)) {
+    const q = getWizardQuestion(kind, levelId, metierId, answers);
     const optId = answers[levelId];
     const opt = q.options.find((o) => o.id === optId);
     lines.push(`\n${q.sectionTitle}`);
@@ -238,9 +338,9 @@ export function formatWizardAnswersForPrompt(
   return lines.join("\n");
 }
 
-export function stableWizardKey(answers: Record<string, string>): string {
+export function stableWizardKey(kind: DiyProjectKind, answers: Record<string, string>): string {
   const o: Record<string, string> = {};
-  for (const k of WIZARD_LEVEL_ORDER) {
+  for (const k of wizardLevelOrder(kind)) {
     o[k] = answers[k] ?? "";
   }
   return JSON.stringify(o);
@@ -248,6 +348,7 @@ export function stableWizardKey(answers: Record<string, string>): string {
 
 /** Clé catégorie pour filtrer les articles conseils (slug `kind-…` ou metierId = kind). */
 export function diyArticleCategoryKey(metierId: string, slug: string): DiyProjectKind | null {
+  if (metierId === "travaux" || slug.startsWith("travaux-")) return "travaux";
   if (metierId === "installation" || slug.startsWith("installation-")) return "installation";
   if (metierId === "renovation" || slug.startsWith("renovation-")) return "renovation";
   if (metierId === "reparation" || slug.startsWith("reparation-")) return "reparation";
@@ -256,14 +357,19 @@ export function diyArticleCategoryKey(metierId: string, slug: string): DiyProjec
 
 /** Filtres affichés sur /conseils (?categorie=…) — même vocabulaire que le parcours DIY. */
 export const DIY_CONSEILS_CATEGORY_FILTERS: { param: DiyProjectKind; label: string }[] = [
+  { param: "travaux", label: "Travaux" },
   { param: "installation", label: "Installation" },
   { param: "renovation", label: "Rénovation" },
   { param: "reparation", label: "Réparation" },
 ];
 
 /** Libellé catégorie pour la liste Conseils (slug QCM `kind-hash` ou ancienne ligne métier/prestation). */
-export function diyListCategoryLabel(metierId: string, slug: string): "Installation" | "Rénovation" | "Réparation" | null {
+export function diyListCategoryLabel(
+  metierId: string,
+  slug: string,
+): "Travaux" | "Installation" | "Rénovation" | "Réparation" | null {
   const k = diyArticleCategoryKey(metierId, slug);
+  if (k === "travaux") return "Travaux";
   if (k === "installation") return "Installation";
   if (k === "renovation") return "Rénovation";
   if (k === "reparation") return "Réparation";

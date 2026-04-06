@@ -13,7 +13,7 @@ import type { SerializedBtpReferentiel } from "@/lib/btp-referentiel-types";
 import {
   getWizardQuestion,
   validateWizardAnswers,
-  WIZARD_LEVEL_ORDER,
+  wizardLevelOrder,
   type DiyProjectKind,
   type WizardLevelId,
 } from "@/lib/diy-wizard-qcm";
@@ -42,6 +42,8 @@ type Phase =
   | "intro"
   | "loading_simple"
   | "diy_kind"
+  | "diy_install_room"
+  | "diy_install_equipment"
   | "diy_loading_ref"
   | "diy_domaine"
   | "diy_wizard"
@@ -67,9 +69,14 @@ const FALLBACK_REPAIR_MID =
 
 const DIY_KIND_OPTIONS: { id: DiyProjectKind; label: string; hint: string }[] = [
   {
+    id: "travaux",
+    label: "Travaux",
+    hint: "Créer ou modifier un ouvrage (cloison, mur, ouverture, petit gros-œuvre…)",
+  },
+  {
     id: "installation",
     label: "Installation",
-    hint: "Neuf, première pose, création ou ajout d’équipement",
+    hint: "Pose / ajout d’équipement (chasse d’eau, luminaire, VMC, radiateur…)",
   },
   {
     id: "renovation",
@@ -140,6 +147,71 @@ function fileToBase64Payload(file: File): Promise<{ base64: string; mimeType: st
   });
 }
 
+const INSTALL_ROOM_OPTIONS: { id: string; label: string }[] = [
+  { id: "l3room-wc", label: "WC" },
+  { id: "l3room-sdb", label: "Salle de bain / buanderie" },
+  { id: "l3room-cuisine", label: "Cuisine" },
+  { id: "l3room-sejour", label: "Séjour / chambre / bureau" },
+  { id: "l3room-exterieur", label: "Extérieur" },
+  { id: "l3room-autre", label: "Autre / plusieurs zones" },
+];
+
+function installEquipmentOptions(roomId: string): { id: string; label: string }[] {
+  if (roomId === "l3room-wc") {
+    return [
+      { id: "l3eq-chasse", label: "Chasse d’eau / mécanisme WC" },
+      { id: "l3eq-wc", label: "WC complet (pose / remplacement)" },
+      { id: "l3eq-lave-mains", label: "Lave-mains / petit lavabo" },
+      { id: "l3eq-accessoire", label: "Accessoire (abattant, bâti, fixation…)" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-sdb") {
+    return [
+      { id: "l3eq-douche", label: "Douche / colonne / paroi" },
+      { id: "l3eq-baignoire", label: "Baignoire" },
+      { id: "l3eq-vasque", label: "Meuble vasque / lavabo" },
+      { id: "l3eq-robinet", label: "Robinetterie (mitigeur, douchette…)" },
+      { id: "l3eq-seche-serviette", label: "Sèche-serviettes" },
+      { id: "l3eq-vmc", label: "VMC / extraction" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-cuisine") {
+    return [
+      { id: "l3eq-evier", label: "Évier / siphon / évacuation" },
+      { id: "l3eq-robinet", label: "Robinetterie cuisine" },
+      { id: "l3eq-hotte", label: "Hotte / extraction" },
+      { id: "l3eq-lv", label: "Lave-vaisselle (raccordement / pose)" },
+      { id: "l3eq-plaques", label: "Plaque / four (pose / raccordement)" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-sejour") {
+    return [
+      { id: "l3eq-luminaire", label: "Luminaire / plafonnier / applique" },
+      { id: "l3eq-prise", label: "Prise / interrupteur (hors tableau)" },
+      { id: "l3eq-radiateur", label: "Radiateur / thermostat" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  if (roomId === "l3room-exterieur") {
+    return [
+      { id: "l3eq-luminaire", label: "Luminaire extérieur" },
+      { id: "l3eq-portail", label: "Portail / motorisation / gâche" },
+      { id: "l3eq-prise-ext", label: "Prise extérieure / éclairage" },
+      { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+    ];
+  }
+  return [
+    { id: "l3eq-chasse", label: "Chasse d’eau / mécanisme WC" },
+    { id: "l3eq-luminaire", label: "Luminaire / électricité légère" },
+    { id: "l3eq-robinet", label: "Robinetterie / raccordement eau" },
+    { id: "l3eq-radiateur", label: "Radiateur / thermostat" },
+    { id: "l3eq-autre", label: "Autre / je ne sais pas" },
+  ];
+}
+
 export function SiteChatbot() {
   const titleId = useId();
   const photoInputId = useId();
@@ -149,7 +221,9 @@ export function SiteChatbot() {
   const [aiReply, setAiReply] = useState<string | null>(null);
   const [repairWizardAnswers, setRepairWizardAnswers] = useState<Record<string, string>>({});
   const [repairMidReply, setRepairMidReply] = useState<string | null>(null);
-  const [repairArticle, setRepairArticle] = useState<{ slug: string; title: string } | null>(null);
+  const [repairArticles, setRepairArticles] = useState<{ slug: string; title: string; problemKey?: string }[] | null>(
+    null,
+  );
   const [repairArticleError, setRepairArticleError] = useState<string | null>(null);
   const [repairClosureChoice, setRepairClosureChoice] =
     useState<RepairInterventionChoice | null>(null);
@@ -162,6 +236,8 @@ export function SiteChatbot() {
   const [diyDomaineId, setDiyDomaineId] = useState("");
   const [diyWizardLevel, setDiyWizardLevel] = useState<WizardLevelId | null>(null);
   const [diyWizardAnswers, setDiyWizardAnswers] = useState<Record<string, string>>({});
+  const [diyInstallRoom, setDiyInstallRoom] = useState<string>("");
+  const [diyInstallEquipment, setDiyInstallEquipment] = useState<string>("");
   const [diyResult, setDiyResult] = useState<{
     slug: string;
     title: string;
@@ -177,7 +253,7 @@ export function SiteChatbot() {
     setAiReply(null);
     setRepairWizardAnswers({});
     setRepairMidReply(null);
-    setRepairArticle(null);
+    setRepairArticles(null);
     setRepairArticleError(null);
     setRepairClosureChoice(null);
     setFinalReply(null);
@@ -188,6 +264,8 @@ export function SiteChatbot() {
     setDiyDomaineId("");
     setDiyWizardLevel(null);
     setDiyWizardAnswers({});
+    setDiyInstallRoom("");
+    setDiyInstallEquipment("");
     setDiyResult(null);
     setDiyError(null);
     setClientSessionId(newClientSessionId());
@@ -198,7 +276,7 @@ export function SiteChatbot() {
       setChoice("repair");
       setRepairWizardAnswers({});
       setRepairMidReply(null);
-      setRepairArticle(null);
+      setRepairArticles(null);
       setRepairArticleError(null);
       setRepairClosureChoice(null);
       setFinalReply(null);
@@ -246,6 +324,27 @@ export function SiteChatbot() {
     setDiyDomaineId("");
     setDiyWizardLevel(null);
     setDiyWizardAnswers({});
+    setDiyInstallRoom("");
+    setDiyInstallEquipment("");
+    if (kind === "installation") {
+      setPhase("diy_install_room");
+      return;
+    }
+    setPhase("diy_loading_ref");
+    try {
+      const res = await fetch("/api/referentiel-btp");
+      if (!res.ok) throw new Error("ref");
+      const data = (await res.json()) as SerializedBtpReferentiel;
+      if (!data.metiers?.length) throw new Error("ref");
+      setDiyRef(data);
+      setPhase("diy_domaine");
+    } catch {
+      setDiyError("Impossible de charger les domaines. Réessaie plus tard.");
+      setPhase("diy_error");
+    }
+  }, []);
+
+  const loadDiyReferentielAfterInstallQualif = useCallback(async () => {
     setPhase("diy_loading_ref");
     try {
       const res = await fetch("/api/referentiel-btp");
@@ -263,7 +362,8 @@ export function SiteChatbot() {
   const loadDiyGuide = useCallback(
     async (answersOverride?: Record<string, string>) => {
       const finalAnswers = answersOverride ?? diyWizardAnswers;
-      if (!diyProjectKind || !diyDomaineId) return;
+      if (!diyProjectKind) return;
+      if (diyProjectKind !== "installation" && !diyDomaineId) return;
       if (!validateWizardAnswers(diyProjectKind, diyDomaineId, finalAnswers)) {
         setDiyError("Le questionnaire est incomplet.");
         setPhase("diy_wizard");
@@ -278,7 +378,7 @@ export function SiteChatbot() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             projectKind: diyProjectKind,
-            metierId: diyDomaineId,
+            metierId: diyDomaineId || undefined,
             wizardAnswers: finalAnswers,
             clientSessionId,
           }),
@@ -321,7 +421,9 @@ export function SiteChatbot() {
       setDiyError(null);
       return;
     }
-    const idx = WIZARD_LEVEL_ORDER.indexOf(diyWizardLevel);
+    if (!diyProjectKind) return;
+    const order = wizardLevelOrder(diyProjectKind);
+    const idx = order.indexOf(diyWizardLevel);
     if (idx <= 0) {
       setPhase("diy_domaine");
       setDiyWizardLevel(null);
@@ -329,15 +431,15 @@ export function SiteChatbot() {
       setDiyError(null);
       return;
     }
-    const prev = WIZARD_LEVEL_ORDER[idx - 1];
+    const prev = order[idx - 1];
     const next = { ...diyWizardAnswers };
-    for (let j = idx; j < WIZARD_LEVEL_ORDER.length; j++) {
-      delete next[WIZARD_LEVEL_ORDER[j]];
+    for (let j = idx; j < order.length; j++) {
+      delete next[order[j]];
     }
     setDiyWizardAnswers(next);
     setDiyWizardLevel(prev);
     setDiyError(null);
-  }, [diyWizardLevel, diyWizardAnswers]);
+  }, [diyWizardLevel, diyWizardAnswers, diyProjectKind]);
 
   const repairWizardExplanation = useCallback(() => {
     if (!validateRepairWizardAnswers(repairWizardAnswers)) return "";
@@ -359,7 +461,7 @@ export function SiteChatbot() {
     if (!t) return;
     setPhase("loading_repair_mid");
     setRepairMidReply(null);
-    setRepairArticle(null);
+    setRepairArticles(null);
     setRepairArticleError(null);
     let mid = FALLBACK_REPAIR_MID;
     try {
@@ -389,23 +491,34 @@ export function SiteChatbot() {
           wizardAnswers: repairWizardAnswers,
           priorAnalysis: mid,
           usedVision: false,
+          conversationContext: `Parcours réparation (sans photo) — QCM + synthèse.\n\nSynthèse:\n${mid}`.slice(0, 12000),
           clientSessionId,
         }),
       });
-      const artData = (await artRes.json()) as {
-        error?: string;
-        slug?: string;
-        title?: string;
-      };
-      if (artRes.ok && artData.slug && artData.title) {
-        setRepairArticle({ slug: artData.slug, title: artData.title });
+      const artData = (await artRes.json()) as
+        | { error?: string; slug?: string; title?: string }
+        | { error?: string; articles?: { slug: string; title: string; problemKey?: string }[] };
+      const articles =
+        "articles" in artData && Array.isArray((artData as { articles?: unknown }).articles)
+          ? ((artData as { articles: { slug: string; title: string; problemKey?: string }[] }).articles ?? [])
+          : null;
+      if (artRes.ok && articles && articles.length > 0) {
+        setRepairArticles(articles);
+        setRepairArticleError(null);
+      } else if (artRes.ok && "slug" in artData && (artData as { slug?: string }).slug && (artData as { title?: string }).title) {
+        setRepairArticles([
+          {
+            slug: (artData as { slug: string }).slug,
+            title: (artData as { title: string }).title,
+          },
+        ]);
         setRepairArticleError(null);
       } else {
-        setRepairArticle(null);
+        setRepairArticles(null);
         setRepairArticleError(artData.error ?? "Fiche Conseils non créée pour le moment.");
       }
     } catch {
-      setRepairArticle(null);
+      setRepairArticles(null);
       setRepairArticleError("Erreur réseau lors de la création de la fiche.");
     } finally {
       setPhase("repair_intervention");
@@ -422,19 +535,20 @@ export function SiteChatbot() {
     }
     setPhase("loading_repair_mid");
     setRepairMidReply(null);
-    setRepairArticle(null);
+    setRepairArticles(null);
     setRepairArticleError(null);
     let mid = FALLBACK_REPAIR_MID;
+    let photoPayload: { base64: string; mimeType: string } | null = null;
     try {
-      const { base64, mimeType } = await fileToBase64Payload(photoFile);
+      photoPayload = await fileToBase64Payload(photoFile);
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           choiceId: "repair",
           explanation: t,
-          imageBase64: base64,
-          mimeType,
+          imageBase64: photoPayload.base64,
+          mimeType: photoPayload.mimeType,
           clientSessionId,
         }),
       });
@@ -454,23 +568,36 @@ export function SiteChatbot() {
           wizardAnswers: repairWizardAnswers,
           priorAnalysis: mid,
           usedVision: true,
+          imageBase64: photoPayload?.base64,
+          mimeType: photoPayload?.mimeType,
+          conversationContext: `Parcours réparation (avec photo) — QCM + synthèse.\n\nSynthèse:\n${mid}`.slice(0, 12000),
           clientSessionId,
         }),
       });
-      const artData = (await artRes.json()) as {
-        error?: string;
-        slug?: string;
-        title?: string;
-      };
-      if (artRes.ok && artData.slug && artData.title) {
-        setRepairArticle({ slug: artData.slug, title: artData.title });
+      const artData = (await artRes.json()) as
+        | { error?: string; slug?: string; title?: string }
+        | { error?: string; articles?: { slug: string; title: string; problemKey?: string }[] };
+      const articles =
+        "articles" in artData && Array.isArray((artData as { articles?: unknown }).articles)
+          ? ((artData as { articles: { slug: string; title: string; problemKey?: string }[] }).articles ?? [])
+          : null;
+      if (artRes.ok && articles && articles.length > 0) {
+        setRepairArticles(articles);
+        setRepairArticleError(null);
+      } else if (artRes.ok && "slug" in artData && (artData as { slug?: string }).slug && (artData as { title?: string }).title) {
+        setRepairArticles([
+          {
+            slug: (artData as { slug: string }).slug,
+            title: (artData as { title: string }).title,
+          },
+        ]);
         setRepairArticleError(null);
       } else {
-        setRepairArticle(null);
+        setRepairArticles(null);
         setRepairArticleError(artData.error ?? "Fiche Conseils non créée pour le moment.");
       }
     } catch {
-      setRepairArticle(null);
+      setRepairArticles(null);
       setRepairArticleError("Erreur réseau lors de la création de la fiche.");
     } finally {
       setPhase("repair_intervention");
@@ -552,10 +679,11 @@ export function SiteChatbot() {
       : null;
 
   const diyWizardPayload =
-    phase === "diy_wizard" && diyRef && diyProjectKind && diyDomaineId && diyWizardLevel
+    phase === "diy_wizard" && diyProjectKind && diyWizardLevel
       ? {
-          wq: getWizardQuestion(diyProjectKind, diyWizardLevel, diyDomaineId),
-          idx: WIZARD_LEVEL_ORDER.indexOf(diyWizardLevel),
+          wq: getWizardQuestion(diyProjectKind, diyWizardLevel, diyDomaineId, diyWizardAnswers),
+          idx: wizardLevelOrder(diyProjectKind).indexOf(diyWizardLevel),
+          total: wizardLevelOrder(diyProjectKind).length,
         }
       : null;
 
@@ -752,17 +880,25 @@ export function SiteChatbot() {
                                     {p}
                                   </p>
                                 ))}
-                                {repairArticle && (
-                                  <p className="mt-3 rounded-lg border border-teal-700/20 bg-teal-700/5 px-2.5 py-2 text-xs dark:border-teal-500/25 dark:bg-teal-500/10">
-                                    <span className="font-semibold text-ink">Fiche complète : </span>
-                                    <Link
-                                      href={`/conseils/${repairArticle.slug}`}
-                                      className="font-medium text-accent underline-offset-2 hover:underline"
-                                      onClick={() => setOpen(false)}
-                                    >
-                                      {repairArticle.title}
-                                    </Link>
-                                  </p>
+                                {repairArticles && repairArticles.length > 0 && (
+                                  <div className="mt-3 rounded-lg border border-teal-700/20 bg-teal-700/5 px-2.5 py-2 text-xs dark:border-teal-500/25 dark:bg-teal-500/10">
+                                    <p className="font-semibold text-ink">
+                                      {repairArticles.length === 1 ? "Fiche complète :" : "Fiches complètes :"}
+                                    </p>
+                                    <ul className="mt-1 space-y-1">
+                                      {repairArticles.map((a) => (
+                                        <li key={a.slug}>
+                                          <Link
+                                            href={`/conseils/${a.slug}`}
+                                            className="font-medium text-accent underline-offset-2 hover:underline"
+                                            onClick={() => setOpen(false)}
+                                          >
+                                            {a.title}
+                                          </Link>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
                                 )}
                                 {repairArticleError && (
                                   <p className="mt-2 text-xs text-warm">{repairArticleError}</p>
@@ -819,17 +955,6 @@ export function SiteChatbot() {
                           </Link>
                         </p>
                       )}
-                      {repairClosureChoice === "sav" && (
-                        <p className="mt-2">
-                          <Link
-                            href="/"
-                            className="inline-flex items-center justify-center rounded-xl border border-ink/15 bg-canvas-muted/40 px-3 py-2 text-xs font-bold text-ink transition hover:bg-canvas-muted/60 dark:border-white/15 dark:bg-white/5"
-                            onClick={() => setOpen(false)}
-                          >
-                            Retour à l’accueil
-                          </Link>
-                        </p>
-                      )}
                       <button
                         type="button"
                         onClick={reset}
@@ -883,6 +1008,7 @@ export function SiteChatbot() {
                       <Bubble role="assistant">
                         <p>
                           Choisis la catégorie qui correspond le mieux :{" "}
+                          <strong className="font-medium text-ink">travaux</strong>,{" "}
                           <strong className="font-medium text-ink">installation</strong>,{" "}
                           <strong className="font-medium text-ink">rénovation</strong> ou{" "}
                           <strong className="font-medium text-ink">réparation</strong> (dépannage ciblé). Ensuite on
@@ -901,6 +1027,80 @@ export function SiteChatbot() {
                             <span className="mt-0.5 block text-xs font-normal text-ink-soft">{opt.hint}</span>
                           </button>
                         ))}
+                      </div>
+                    </>
+                  )}
+
+                  {phase === "diy_install_room" && diyProjectKind === "installation" && (
+                    <>
+                      <Bubble role="assistant">
+                        <p>
+                          Avant de choisir le domaine, on qualifie rapidement l’installation.{" "}
+                          <strong className="font-medium text-ink">Dans quelle pièce / zone</strong> se passe la pose ?
+                        </p>
+                      </Bubble>
+                      <div className="flex flex-col gap-2 pt-0.5">
+                        {INSTALL_ROOM_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setDiyInstallRoom(opt.id);
+                              setDiyInstallEquipment("");
+                              setPhase("diy_install_equipment");
+                            }}
+                            className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 dark:border-white/10 dark:hover:bg-white/5"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDiyProjectKind("");
+                            setPhase("diy_kind");
+                          }}
+                          className="text-xs font-medium text-accent hover:underline"
+                        >
+                          ← Changer de catégorie
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {phase === "diy_install_equipment" && diyProjectKind === "installation" && (
+                    <>
+                      <Bubble role="assistant">
+                        <p>
+                          Ok. Maintenant,{" "}
+                          <strong className="font-medium text-ink">quel équipement</strong> veux-tu installer ?
+                        </p>
+                      </Bubble>
+                      <div className="flex flex-col gap-2 pt-0.5">
+                        {installEquipmentOptions(diyInstallRoom).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setDiyInstallEquipment(opt.id);
+                              setDiyWizardAnswers({ l3room: diyInstallRoom, l3eq: opt.id });
+                              setDiyDomaineId("");
+                              setDiyWizardLevel("l3");
+                              setDiyError(null);
+                              setPhase("diy_wizard");
+                            }}
+                            className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 dark:border-white/10 dark:hover:bg-white/5"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setPhase("diy_install_room")}
+                          className="text-xs font-medium text-accent hover:underline"
+                        >
+                          ← Modifier la pièce
+                        </button>
                       </div>
                     </>
                   )}
@@ -949,7 +1149,7 @@ export function SiteChatbot() {
                           disabled={!diyDomaineId}
                           onClick={() => {
                             setDiyWizardLevel("l3");
-                            setDiyWizardAnswers({});
+                            setDiyWizardAnswers(diyWizardAnswers);
                             setDiyError(null);
                             setPhase("diy_wizard");
                           }}
@@ -973,13 +1173,28 @@ export function SiteChatbot() {
                     </>
                   )}
 
-                  {diyWizardPayload && diyRef && diyProjectKind && diyDomaineId && diyWizardLevel ? (
+                  {diyWizardPayload && diyProjectKind && diyWizardLevel ? (
                     <>
                       <Bubble role="assistant">
                         <p className="text-xs text-ink-soft">
                           Niveau 1 :{" "}
-                          {DIY_KIND_OPTIONS.find((o) => o.id === diyProjectKind)?.label ?? diyProjectKind} · Niveau 2 :{" "}
-                          {diyRef.metiers.find((m) => m.id === diyDomaineId)?.label ?? diyDomaineId}
+                          {DIY_KIND_OPTIONS.find((o) => o.id === diyProjectKind)?.label ?? diyProjectKind}
+                          {diyProjectKind === "installation" ? (
+                            <>
+                              {" "}
+                              · Équipement :{" "}
+                              <span className="font-medium text-ink">
+                                {installEquipmentOptions(diyInstallRoom).find((o) => o.id === diyInstallEquipment)
+                                  ?.label ?? "—"}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {" "}
+                              · Niveau 2 :{" "}
+                              {diyRef?.metiers.find((m) => m.id === diyDomaineId)?.label ?? diyDomaineId}
+                            </>
+                          )}
                         </p>
                         <p className="mt-2 text-xs font-semibold text-ink">{diyWizardPayload.wq.sectionTitle}</p>
                         <p className="mt-1">{diyWizardPayload.wq.question}</p>
@@ -993,13 +1208,15 @@ export function SiteChatbot() {
                               setDiyError(null);
                               const level = diyWizardLevel;
                               if (!level) return;
-                              const i = WIZARD_LEVEL_ORDER.indexOf(level);
+                              if (!diyProjectKind) return;
+                              const order = wizardLevelOrder(diyProjectKind);
+                              const i = order.indexOf(level);
                               const nextAnswers = { ...diyWizardAnswers, [level]: opt.id };
-                              if (i >= WIZARD_LEVEL_ORDER.length - 1) {
+                              if (i >= order.length - 1) {
                                 void loadDiyGuide(nextAnswers);
                               } else {
                                 setDiyWizardAnswers(nextAnswers);
-                                setDiyWizardLevel(WIZARD_LEVEL_ORDER[i + 1]);
+                                setDiyWizardLevel(order[i + 1]);
                               }
                             }}
                             className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 dark:border-white/10 dark:hover:bg-white/5"
@@ -1007,7 +1224,7 @@ export function SiteChatbot() {
                             {opt.label}
                           </button>
                         ))}
-                        {diyWizardPayload.idx === WIZARD_LEVEL_ORDER.length - 1 ? (
+                        {diyWizardPayload.idx === diyWizardPayload.total - 1 ? (
                           <p className="text-[10px] text-ink-soft">
                             Dernière réponse : envoi automatique du guide (même parcours = fiche existante).
                           </p>

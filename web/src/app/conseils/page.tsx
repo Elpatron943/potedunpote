@@ -24,7 +24,7 @@ function formatDate(iso: string): string {
   }).format(d);
 }
 
-const CATEGORY_PARAM_SET = new Set<DiyProjectKind>(["installation", "renovation", "reparation"]);
+const CATEGORY_PARAM_SET = new Set<DiyProjectKind>(["travaux", "installation", "renovation", "reparation"]);
 
 type PageProps = {
   searchParams: Promise<{ categorie?: string }>;
@@ -91,7 +91,8 @@ export default async function ConseilsIndexPage({ searchParams }: PageProps) {
           <p className="rounded-2xl border border-dashed border-ink/15 bg-canvas-muted/30 px-6 py-10 text-center text-sm text-ink-soft dark:border-white/15">
             Aucun guide publié pour le moment. Utilise le{" "}
             <strong className="font-medium text-ink">Bot de ton pote</strong> (parcours « Je veux faire les
-            travaux tout seul ») : <strong className="font-medium text-ink">installation</strong>,{" "}
+            travaux tout seul ») : <strong className="font-medium text-ink">travaux</strong>,{" "}
+            <strong className="font-medium text-ink">installation</strong>,{" "}
             <strong className="font-medium text-ink">rénovation</strong> ou{" "}
             <strong className="font-medium text-ink">réparation</strong>,{" "}
             <strong className="font-medium text-ink">corps de métier</strong>, puis un questionnaire en QCM (niveaux 3 à

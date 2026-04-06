@@ -99,7 +99,7 @@ function parseBody(body: unknown): {
       : null;
   const repairClosure = o.repairClosure === true;
   const ic = o.interventionChoice;
-  const interventionChoice = ic === "artisan" || ic === "sav" ? ic : null;
+  const interventionChoice = ic === "artisan" ? ic : null;
   const priorAnalysis =
     typeof o.priorAnalysis === "string" ? o.priorAnalysis.trim() : "";
   return {
@@ -158,10 +158,7 @@ export async function POST(request: Request) {
 
       if (repairClosure) {
         if (!interventionChoice) {
-          return NextResponse.json(
-            { error: "interventionChoice requis (artisan ou sav)" },
-            { status: 400 },
-          );
+          return NextResponse.json({ error: "interventionChoice requis (artisan)" }, { status: 400 });
         }
         if (!explanation) {
           return NextResponse.json({ error: "explanation requis pour la clôture" }, { status: 400 });
@@ -169,7 +166,6 @@ export async function POST(request: Request) {
         const priorSlice = priorAnalysis.slice(0, MAX_PRIOR_ANALYSIS);
         const closureSystem: Record<RepairInterventionChoice, string> = {
           artisan: SYSTEM_REPAIR_CLOSURE_ARTISAN,
-          sav: SYSTEM_REPAIR_CLOSURE_SAV,
         };
         const orientationLabel =
           interventionChoice === "artisan"

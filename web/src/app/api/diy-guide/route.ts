@@ -29,7 +29,7 @@ type GuideJson = {
   bodyMarkdown?: string;
 };
 
-const DIY_KIND_VALUES = new Set(["installation", "renovation", "reparation"]);
+const DIY_KIND_VALUES = new Set(["travaux", "installation", "renovation", "reparation"]);
 
 function parseGuideJson(raw: string): GuideJson | null {
   try {
@@ -56,8 +56,11 @@ function fingerprintTextOnly(kind: string, normalizedDesc: string): { slug: stri
 }
 
 function kindPromptLabel(kind: string): string {
+  if (kind === "travaux") {
+    return "Travaux — création ou modification d’ouvrage (ex : poser une cloison, créer une ouverture, monter un mur, maçonnerie, structure légère). Ce n’est pas une simple pose d’équipement ni une réparation ciblée.";
+  }
   if (kind === "installation") {
-    return "Installation — travaux neufs, première pose, création ou ajout d’équipement (pas une simple réfection de l’existant).";
+    return "Installation — pose / ajout d’équipement (ex : chasse d’eau, robinetterie, luminaire, VMC, radiateur), avec raccordements et contraintes de support.";
   }
   if (kind === "renovation") {
     return "Rénovation / réfection — reprise de l’existant, remplacement, mise à jour, remise en état.";
@@ -69,6 +72,7 @@ function kindPromptLabel(kind: string): string {
 }
 
 function defaultTitleKindFragment(kind: string): string {
+  if (kind === "travaux") return "travaux";
   if (kind === "installation") return "installation";
   if (kind === "renovation") return "rénovation";
   if (kind === "reparation") return "réparation";
@@ -115,24 +119,31 @@ export async function POST(request: Request) {
     body.wizardAnswers !== null &&
     !Array.isArray(body.wizardAnswers);
 
+  const kindRawIsInstallation = projectKindRaw === "installation";
   const isQcmWizard =
-    DIY_KIND_VALUES.has(projectKindRaw) && btpMetier.length > 0 && hasWizardObject;
+    DIY_KIND_VALUES.has(projectKindRaw) &&
+    hasWizardObject &&
+    (btpMetier.length > 0 || kindRawIsInstallation);
 
   if (isQcmWizard) {
     const kind = projectKindRaw as DiyProjectKind;
-    if (!getBtpMetierFromRef(ref, btpMetier)) {
-      return NextResponse.json({ error: "Domaine (corps de métier) inconnu ou invalide." }, { status: 400 });
+    if (kind !== "installation") {
+      if (!getBtpMetierFromRef(ref, btpMetier)) {
+        return NextResponse.json({ error: "Domaine (corps de métier) inconnu ou invalide." }, { status: 400 });
+      }
     }
     const wizardAnswers = body.wizardAnswers as Record<string, string>;
-    if (!validateWizardAnswers(kind, btpMetier, wizardAnswers)) {
+    const metierForWizard = kind === "installation" ? "" : btpMetier;
+    if (!validateWizardAnswers(kind, metierForWizard, wizardAnswers)) {
       return NextResponse.json(
         { error: "Réponses QCM incomplètes ou invalides (niveaux 3 à 9 requis)." },
         { status: 400 },
       );
     }
-    const metierLabel = getBtpMetierLabelFromRef(ref, btpMetier) ?? btpMetier;
-    const wizardBlock = formatWizardAnswersForPrompt(kind, btpMetier, metierLabel, wizardAnswers);
-    const fpPayload = [projectKindRaw, btpMetier, stableWizardKey(wizardAnswers)].join("\n");
+    const metierLabel =
+      kind === "installation" ? "—" : (getBtpMetierLabelFromRef(ref, btpMetier) ?? btpMetier);
+    const wizardBlock = formatWizardAnswersForPrompt(kind, metierForWizard, metierLabel, wizardAnswers);
+    const fpPayload = [projectKindRaw, metierForWizard, stableWizardKey(kind, wizardAnswers)].join("\n");
     const h = hash16(fpPayload);
     metierId = projectKindRaw;
     prestationId = `fp-${h}`;
@@ -142,12 +153,12 @@ export async function POST(request: Request) {
 Parcours guidé (QCM) — à exploiter pour personnaliser le guide :
 
 ${wizardBlock}`;
-    logUserSummary = `${projectKindRaw} | ${metierLabel} | ${stableWizardKey(wizardAnswers)}`;
+    logUserSummary = `${projectKindRaw} | ${metierLabel} | ${stableWizardKey(kind, wizardAnswers)}`;
     titleHintUsesKind = true;
   } else if (projectKindRaw.length > 0 || projectDescriptionRaw.trim().length > 0) {
     if (!DIY_KIND_VALUES.has(projectKindRaw)) {
       return NextResponse.json(
-        { error: "projectKind doit être « installation », « renovation » ou « reparation »." },
+        { error: "projectKind doit être « travaux », « installation », « renovation » ou « reparation »." },
         { status: 400 },
       );
     }

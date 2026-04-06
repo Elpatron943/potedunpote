@@ -1328,9 +1328,9 @@ export function SiteChatbot() {
             type="button"
             onClick={() => setOpen(true)}
             className="mb-1 max-w-[min(15rem,calc(100vw-5.5rem))] rounded-2xl rounded-br-sm border border-ink/10 bg-[var(--card)] px-3.5 py-2.5 text-left text-sm font-medium leading-snug text-ink shadow-md backdrop-blur-md transition hover:border-accent/30 hover:bg-canvas-muted/50 dark:border-white/10 dark:hover:bg-white/5"
-            aria-label="T’as une question mon pote? Ouvrir le Bot de ton pote"
+            aria-label="Pose la question au bot de ton pote — ouvrir"
           >
-            T&apos;as une question mon pote?
+            Pose la question au bot de ton pote
           </button>
         )}
         <button

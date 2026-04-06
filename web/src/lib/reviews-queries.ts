@@ -21,8 +21,12 @@ export type PublicReviewPayload = {
   quoteVsPaid: QuoteAccuracy | null;
   prestationMetierId: string | null;
   prestationActiviteId: string | null;
+  metierId: string | null;
+  specialiteId: string | null;
   amountPaidCents: number | null;
   surfaceM2: number | null;
+  durationMinutes: number | null;
+  pricePrestationOnly: boolean | null;
   status: ReviewStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -84,8 +88,12 @@ export async function getPublishedReviewsForSiren(siren: string): Promise<Public
       quoteVsPaid: (row.quoteVsPaid as QuoteAccuracy | null) ?? null,
       prestationMetierId: (row.prestationMetierId as string | null) ?? null,
       prestationActiviteId: (row.prestationActiviteId as string | null) ?? null,
+      metierId: (row.metierId as string | null) ?? null,
+      specialiteId: (row.specialiteId as string | null) ?? null,
       amountPaidCents: (row.amountPaidCents as number | null) ?? null,
       surfaceM2: (row.surfaceM2 as number | null) ?? null,
+      durationMinutes: (row.durationMinutes as number | null) ?? null,
+      pricePrestationOnly: (row.pricePrestationOnly as boolean | null) ?? null,
       status: row.status as ReviewStatus,
       createdAt: toDate(row.createdAt as string),
       updatedAt: toDate(row.updatedAt as string),

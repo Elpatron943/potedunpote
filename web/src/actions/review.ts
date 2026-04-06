@@ -113,14 +113,20 @@ export async function submitReview(
   const quoteVsPaid = parseOptionalEnum<QuoteAccuracy>(formData.get("quoteVsPaid"), QUOTE_SET);
 
   const metierRaw = formData.get("prestationMetier");
-  const activiteRaw = formData.get("prestationActivite");
-  const metierStr = typeof metierRaw === "string" ? metierRaw.trim() : "";
-  const activiteStr = typeof activiteRaw === "string" ? activiteRaw.trim() : "";
+  const specialiteRaw = formData.get("specialiteId");
+  const metierIdRaw = formData.get("metierId");
+  const metierStr =
+    typeof metierIdRaw === "string"
+      ? metierIdRaw.trim()
+      : typeof metierRaw === "string"
+        ? metierRaw.trim()
+        : "";
+  const specialiteStr = typeof specialiteRaw === "string" ? specialiteRaw.trim() : "";
 
-  if (metierStr !== activiteStr && (metierStr === "" || activiteStr === "")) {
+  if (metierStr !== specialiteStr && (metierStr === "" || specialiteStr === "")) {
     return {
       ok: false,
-      error: "Choisis un métier et une prestation ensemble, ou laisse les deux champs vides.",
+      error: "Choisis un métier et une spécialité ensemble, ou laisse les deux champs vides.",
     };
   }
 
@@ -128,15 +134,15 @@ export async function submitReview(
 
   let prestationMetierId: string | null = null;
   let prestationActiviteId: string | null = null;
-  if (metierStr !== "" && activiteStr !== "") {
+  if (metierStr !== "" && specialiteStr !== "") {
     if (!getBtpMetierFromRef(btpRef, metierStr)) {
       return { ok: false, error: "Famille métier invalide." };
     }
-    if (!isValidPrestationPair(btpRef, metierStr, activiteStr)) {
+    if (!isValidPrestationPair(btpRef, metierStr, specialiteStr)) {
       return { ok: false, error: "Cette prestation ne correspond pas au métier choisi." };
     }
     prestationMetierId = metierStr;
-    prestationActiviteId = activiteStr;
+    prestationActiviteId = specialiteStr;
   }
 
   const amountParsed = parseOptionalAmountEurosToCents(formData.get("amountPaidEuros"));
@@ -165,6 +171,25 @@ export async function submitReview(
     }
   }
 
+  const durationRaw = formData.get("durationMinutes");
+  const durationStr = typeof durationRaw === "string" ? durationRaw.trim() : "";
+  const durationMinutes =
+    durationStr === ""
+      ? null
+      : (() => {
+          const n = Number.parseInt(durationStr, 10);
+          return Number.isInteger(n) && n > 0 && n <= 7 * 24 * 60 ? n : Number.NaN;
+        })();
+  if (durationMinutes !== null && Number.isNaN(durationMinutes)) {
+    return { ok: false, error: "Durée invalide (minutes)." };
+  }
+
+  const pricePrestationOnlyRaw = formData.get("pricePrestationOnly");
+  const pricePrestationOnly =
+    pricePrestationOnlyRaw === "on" || pricePrestationOnlyRaw === "true" || pricePrestationOnlyRaw === "1"
+      ? true
+      : false;
+
   const now = new Date().toISOString();
   const id = createId();
 
@@ -181,8 +206,12 @@ export async function submitReview(
     quoteVsPaid: quoteVsPaid ?? null,
     prestationMetierId: prestationMetierId ?? null,
     prestationActiviteId: prestationActiviteId ?? null,
+    metierId: prestationMetierId ?? null,
+    specialiteId: prestationActiviteId ?? null,
     amountPaidCents: amountPaidCents ?? null,
     surfaceM2: surfaceM2 ?? null,
+    durationMinutes,
+    pricePrestationOnly,
     status: "PENDING",
     createdAt: now,
     updatedAt: now,

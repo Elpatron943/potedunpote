@@ -37,20 +37,21 @@ export function ReviewForm({
   referentiel: SerializedBtpReferentiel;
 }) {
   const [state, formAction, pending] = useActionState(submitReview, initial);
-  const [prestationMetier, setPrestationMetier] = useState("");
-  const [prestationActivite, setPrestationActivite] = useState("");
+  const [metierId, setMetierId] = useState("");
+  const [specialiteId, setSpecialiteId] = useState("");
   const [amountPaidEuros, setAmountPaidEuros] = useState("");
   const [surfaceM2Input, setSurfaceM2Input] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
 
-  const sousActivites = getSousActivitesForMetier(referentiel, prestationMetier);
+  const sousActivites = getSousActivitesForMetier(referentiel, metierId);
   const surfacePrestation =
-    prestationMetier !== "" &&
-    prestationActivite !== "" &&
-    isPrestationPricedBySurface(referentiel, prestationMetier, prestationActivite);
+    metierId !== "" &&
+    specialiteId !== "" &&
+    isPrestationPricedBySurface(referentiel, metierId, specialiteId);
 
   useEffect(() => {
-    setPrestationActivite("");
-  }, [prestationMetier]);
+    setSpecialiteId("");
+  }, [metierId]);
 
   const previewPerM2 = useMemo(() => {
     if (!surfacePrestation) return null;
@@ -121,11 +122,11 @@ export function ReviewForm({
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-ink-soft">Famille métier</span>
+            <span className="text-xs font-medium text-ink-soft">Métier</span>
             <select
-              name="prestationMetier"
-              value={prestationMetier}
-              onChange={(e) => setPrestationMetier(e.target.value)}
+              name="metierId"
+              value={metierId}
+              onChange={(e) => setMetierId(e.target.value)}
               className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
             >
               <option value="">—</option>
@@ -137,16 +138,16 @@ export function ReviewForm({
             </select>
           </label>
           <label className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-ink-soft">Prestation</span>
+            <span className="text-xs font-medium text-ink-soft">Spécialité</span>
             <select
-              name="prestationActivite"
-              value={prestationActivite}
-              onChange={(e) => setPrestationActivite(e.target.value)}
-              disabled={!prestationMetier}
+              name="specialiteId"
+              value={specialiteId}
+              onChange={(e) => setSpecialiteId(e.target.value)}
+              disabled={!metierId}
               className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink disabled:opacity-50 dark:border-white/10 dark:bg-canvas-muted/40"
             >
               <option value="">
-                {prestationMetier ? "— Choisis une prestation —" : "— Choisis d’abord un métier —"}
+                {metierId ? "— Choisis une spécialité —" : "— Choisis d’abord un métier —"}
               </option>
               {sousActivites.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -156,6 +157,24 @@ export function ReviewForm({
             </select>
           </label>
         </div>
+        <label className="mt-3 flex flex-col gap-2">
+          <span className="text-xs font-medium text-ink-soft">
+            Durée de la prestation (minutes) <span className="font-normal text-ink-soft/75">optionnel</span>
+          </span>
+          <input
+            name="durationMinutes"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="ex. 45, 90, 240"
+            value={durationMinutes}
+            onChange={(e) => setDurationMinutes(e.target.value)}
+            className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
+          />
+          <span className="text-xs text-ink-soft">
+            Temps réellement passé sur la prestation (hors échanges avant/après si tu ne veux pas compter).
+          </span>
+        </label>
         <label className="mt-3 flex flex-col gap-2">
           <span className="text-xs font-medium text-ink-soft">
             Montant payé (€) <span className="font-normal text-ink-soft/75">optionnel</span>
@@ -171,8 +190,21 @@ export function ReviewForm({
             className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
           />
           <span className="text-xs text-ink-soft">
-            Montant total réglé pour cette prestation (TTC ou principal). Sert aux statistiques sur la fiche
-            une fois l’avis publié.
+            Montant payé pour <strong className="font-medium text-ink">la prestation</strong>. Tu peux préciser ci-dessous
+            si ce prix correspondait uniquement à la main d’œuvre / prestation, sans matériel ni outillage.
+          </span>
+        </label>
+
+        <label className="mt-3 flex items-start gap-2 rounded-xl border border-ink/10 bg-canvas/50 px-3 py-2.5 text-xs text-ink-soft dark:border-white/10 dark:bg-canvas-muted/30">
+          <input
+            type="checkbox"
+            name="pricePrestationOnly"
+            defaultChecked
+            className="mt-0.5 text-teal-700 focus:ring-teal-600"
+          />
+          <span>
+            Le montant indiqué concerne <strong className="font-medium text-ink">uniquement la prestation</strong> (sans
+            fourniture de matériaux, outillage, consommables, gros équipements).
           </span>
         </label>
 

@@ -69,7 +69,7 @@ export async function SiteHeader() {
             </Link>
           )}
           <Link
-            href="/artisan/abonnement"
+            href="/pro"
             className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition hover:bg-canvas-muted/80 hover:text-ink dark:hover:bg-white/5"
           >
             <span className="hidden sm:inline">Espace Pro</span>

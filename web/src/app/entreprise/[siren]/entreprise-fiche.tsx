@@ -66,9 +66,11 @@ function formatPrestationReviewLine(
   r: PublicReviewPayload,
   ref: SerializedBtpReferentiel,
 ): string | null {
-  if (!r.prestationMetierId || !r.prestationActiviteId) return null;
-  const metier = getBtpMetierLabelFromRef(ref, r.prestationMetierId);
-  const act = getPrestationActiviteLabel(ref, r.prestationMetierId, r.prestationActiviteId);
+  const metierId = r.metierId ?? r.prestationMetierId;
+  const specialiteId = r.specialiteId ?? r.prestationActiviteId;
+  if (!metierId || !specialiteId) return null;
+  const metier = getBtpMetierLabelFromRef(ref, metierId);
+  const act = getPrestationActiviteLabel(ref, metierId, specialiteId);
   if (!act) return metier;
   return metier ? `${metier} — ${act}` : act;
 }

@@ -70,6 +70,30 @@ export async function submitReview(
   }
 
   const supabase = getSupabaseAdmin();
+  const { data: me, error: meErr } = await supabase
+    .from("User")
+    .select("name")
+    .eq("id", session.userId)
+    .maybeSingle();
+  if (meErr) throw meErr;
+
+  const firstNameRaw = formData.get("firstName");
+  const lastNameRaw = formData.get("lastName");
+  const firstName = typeof firstNameRaw === "string" ? firstNameRaw.trim().slice(0, 80) : "";
+  const lastName = typeof lastNameRaw === "string" ? lastNameRaw.trim().slice(0, 80) : "";
+
+  const hasName = (me?.name ?? "").trim().length > 0;
+  if (!hasName) {
+    if (firstName.length === 0 || lastName.length === 0) {
+      return { ok: false, error: "Renseigne ton prénom et ton nom avant de publier ton avis." };
+    }
+    const displayName = `${firstName} ${lastName}`.replace(/\s+/g, " ").trim();
+    const { error: updErr } = await supabase
+      .from("User")
+      .update({ name: displayName })
+      .eq("id", session.userId);
+    if (updErr) throw updErr;
+  }
   const { data: artisan } = await supabase
     .from("ArtisanProfile")
     .select("siren")
@@ -212,7 +236,7 @@ export async function submitReview(
     surfaceM2: surfaceM2 ?? null,
     durationMinutes,
     pricePrestationOnly,
-    status: "PENDING",
+    status: "PUBLISHED",
     createdAt: now,
     updatedAt: now,
   });

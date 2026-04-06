@@ -103,6 +103,45 @@ export async function getPublishedReviewsForSiren(siren: string): Promise<Public
   });
 }
 
+/** Avis déposés par un utilisateur (tous statuts), pour l’espace membre. */
+export type AuthorReviewSummary = {
+  id: string;
+  siren: string;
+  status: ReviewStatus;
+  ratingOverall: number;
+  comment: string | null;
+  createdAt: Date;
+  metierId: string | null;
+  specialiteId: string | null;
+  amountPaidCents: number | null;
+  surfaceM2: number | null;
+};
+
+export async function getReviewsByAuthorId(userId: string): Promise<AuthorReviewSummary[]> {
+  const supabase = getSupabaseAdmin();
+  const { data: rows, error } = await supabase
+    .from("Review")
+    .select(
+      "id, siren, status, ratingOverall, comment, createdAt, metierId, specialiteId, amountPaidCents, surfaceM2",
+    )
+    .eq("authorId", userId)
+    .order("createdAt", { ascending: false });
+
+  if (error) throw error;
+  return (rows ?? []).map((row) => ({
+    id: row.id as string,
+    siren: row.siren as string,
+    status: row.status as ReviewStatus,
+    ratingOverall: row.ratingOverall as number,
+    comment: (row.comment as string | null) ?? null,
+    createdAt: toDate(row.createdAt as string),
+    metierId: (row.metierId as string | null) ?? null,
+    specialiteId: (row.specialiteId as string | null) ?? null,
+    amountPaidCents: (row.amountPaidCents as number | null) ?? null,
+    surfaceM2: (row.surfaceM2 as number | null) ?? null,
+  }));
+}
+
 export async function getUserReviewForSiren(userId: string, siren: string) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase

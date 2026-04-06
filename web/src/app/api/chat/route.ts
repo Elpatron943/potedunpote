@@ -65,6 +65,15 @@ Règles :
 - Rappelle les grandes étapes : contacter assureur ou SAV, numéro de série / facture si utile, photos pour dossier, délais types (sans chiffres inventés).
 - Ne remplace pas les conditions du contrat ou de la garantie ; reste général et prudent.`;
 
+const SYSTEM_REPAIR_CLOSURE_DIY = `Tu es « Bot de ton pote ». L’utilisateur souhaite s’appuyer sur la fiche « Conseils » déjà générée (ou à venir) pour tenter une réparation en autonomie.
+
+Règles :
+- Réponds en français, ton calme et responsable (3 à 6 phrases courtes).
+- Sensibilise aux risques : sécurité personnelle, dégâts des eaux, électricité, gaz, structure, annulation de garantie si mauvaise intervention — sans catastrophisme mais sans banaliser.
+- Rappelle : couper l’eau / le gaz / le courant selon le cas avant toute manip ; si le moindre doute ou situation d’urgence, faire appel à un professionnel.
+- Précise que la fiche sur le site est une aide générale, pas un diagnostic sur place ni une garantie de résultat.
+- Ne donne pas une liste d’étapes techniques détaillées (la fiche Conseils le fait) ; oriente vers la lecture attentive de cette fiche et la prudence.`;
+
 const MAX_EXPLANATION = 6000;
 const MAX_PRIOR_ANALYSIS = 8000;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -99,7 +108,8 @@ function parseBody(body: unknown): {
       : null;
   const repairClosure = o.repairClosure === true;
   const ic = o.interventionChoice;
-  const interventionChoice = ic === "artisan" ? ic : null;
+  const interventionChoice =
+    ic === "artisan" || ic === "diy" ? ic : null;
   const priorAnalysis =
     typeof o.priorAnalysis === "string" ? o.priorAnalysis.trim() : "";
   return {
@@ -158,7 +168,10 @@ export async function POST(request: Request) {
 
       if (repairClosure) {
         if (!interventionChoice) {
-          return NextResponse.json({ error: "interventionChoice requis (artisan)" }, { status: 400 });
+          return NextResponse.json(
+            { error: "interventionChoice requis (artisan ou diy)" },
+            { status: 400 },
+          );
         }
         if (!explanation) {
           return NextResponse.json({ error: "explanation requis pour la clôture" }, { status: 400 });
@@ -166,11 +179,12 @@ export async function POST(request: Request) {
         const priorSlice = priorAnalysis.slice(0, MAX_PRIOR_ANALYSIS);
         const closureSystem: Record<RepairInterventionChoice, string> = {
           artisan: SYSTEM_REPAIR_CLOSURE_ARTISAN,
+          diy: SYSTEM_REPAIR_CLOSURE_DIY,
         };
         const orientationLabel =
           interventionChoice === "artisan"
             ? "Mise en relation / recherche d’un artisan sur le site"
-            : "Déclaration sinistre / SAV fabricant";
+            : "Réparation en autonomie — lecture de la fiche conseil DIY (avec prise de conscience des risques)";
         const userBlock =
           priorSlice.length > 0
             ? `Réponses au questionnaire structuré :\n\n${explanation}\n\n---\nAnalyse déjà communiquée (texte ou photo) :\n"""${priorSlice}"""\n\nOrientation finale demandée par l’utilisateur : ${orientationLabel}.`

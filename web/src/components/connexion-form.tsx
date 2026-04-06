@@ -13,7 +13,7 @@ type RegisterStep = "credentials" | "otp";
 export function ConnexionForm({ portal }: { portal: ConnexionPortal }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const defaultNext = portal === "pro" ? ARTISAN_SUBSCRIBE_NEXT : "/";
+  const defaultNext = portal === "pro" ? ARTISAN_SUBSCRIBE_NEXT : "/compte";
   const nextUrl = searchParams.get("next") ?? defaultNext;
 
   const [mode, setMode] = useState<"login" | "register">("login");

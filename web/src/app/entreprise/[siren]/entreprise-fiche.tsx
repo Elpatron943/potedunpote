@@ -292,7 +292,7 @@ export function EntrepriseFiche({
         <div>
           <h2 className="text-lg font-semibold text-ink">Avis clients</h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Avis soumis par des utilisateurs connectés. Publication après modération. Une seule
+            Avis soumis par des utilisateurs connectés et affichés sur la fiche. Une seule
             contribution par compte et par entreprise. Tu peux indiquer prestation et prix pour toute
             entreprise, même si elle n’est pas inscrite ici — aucun abonnement n’est requis.
           </p>
@@ -487,7 +487,13 @@ export function EntrepriseFiche({
               (ou crée un compte) pour déposer un avis sur cette entreprise.
             </p>
           ) : myReview ? (
-            <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-ink">
+            <p
+              className={
+                myReview.status === "PUBLISHED"
+                  ? "mt-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-ink dark:text-emerald-100"
+                  : "mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-ink"
+              }
+            >
               Tu as déjà déposé un avis ici — statut :{" "}
               <strong>{reviewStatusLabel(myReview.status)}</strong>.
               {myReview.status === "PENDING"

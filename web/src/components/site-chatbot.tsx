@@ -906,6 +906,11 @@ export function SiteChatbot() {
                                 <p className="mt-3 text-xs font-semibold text-ink">
                                   Parcours 5 — Comment veux-tu poursuivre ?
                                 </p>
+                                <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">
+                                  La fiche sur Conseils (générée ou déjà présente) reprend le diagnostic ; tu peux
+                                  te faire aider par un pro sur le site, ou tenter le DIY en connaissance des
+                                  risques.
+                                </p>
                                 {phase === "loading_repair_closure" && (
                                   <div className="mt-2 flex items-center gap-2 border-t border-ink/10 pt-2 text-xs text-ink-soft dark:border-white/10">
                                     <span
@@ -924,7 +929,11 @@ export function SiteChatbot() {
                                   type="button"
                                   disabled={phase === "loading_repair_closure"}
                                   onClick={() => void submitRepairClosure(opt.id)}
-                                  className="rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
+                                  className={
+                                    opt.id === "diy"
+                                      ? "rounded-xl border border-amber-500/35 bg-amber-500/[0.08] px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-amber-500/55 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-500/30 dark:bg-amber-950/20 dark:hover:bg-amber-950/35"
+                                      : "rounded-xl border border-ink/10 bg-canvas-muted/50 px-3 py-2.5 text-left text-sm font-medium text-ink transition hover:border-accent/40 hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
+                                  }
                                 >
                                   {opt.label}
                                 </button>
@@ -954,6 +963,57 @@ export function SiteChatbot() {
                             Recherche d’artisan
                           </Link>
                         </p>
+                      )}
+                      {repairClosureChoice === "diy" && (
+                        <div className="mt-3 space-y-3">
+                          <div
+                            className="rounded-xl border border-amber-500/35 bg-amber-500/[0.12] px-3 py-2.5 text-xs leading-relaxed text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-50"
+                            role="note"
+                          >
+                            <p className="font-semibold text-amber-900 dark:text-amber-100">
+                              Réparer seul : évalue les risques avant d’agir
+                            </p>
+                            <p className="mt-1.5 text-amber-950/95 dark:text-amber-100/90">
+                              Électricité, gaz, eau sous pression, étanchéité ou éléments porteurs : une mauvaise
+                              manip peut blesser, aggraver les dégâts ou faire sauter des garanties. Coupe les
+                              arrivées (eau, gaz, courant) si besoin ; si tu as un doute, fais appel à un
+                              professionnel.
+                            </p>
+                          </div>
+                          {repairArticles && repairArticles.length > 0 ? (
+                            <div className="space-y-2">
+                              <p className="text-xs font-semibold text-ink">Fiche conseil (stockée ou générée) :</p>
+                              <ul className="space-y-2">
+                                {repairArticles.map((a) => (
+                                  <li key={a.slug}>
+                                    <Link
+                                      href={`/conseils/${a.slug}`}
+                                      className="inline-flex w-full items-center justify-center rounded-xl border border-teal-700/45 bg-teal-700/12 px-3 py-2.5 text-center text-xs font-bold text-teal-950 transition hover:bg-teal-700/20 dark:border-teal-500/40 dark:text-teal-50 dark:hover:bg-teal-500/20"
+                                      onClick={() => setOpen(false)}
+                                    >
+                                      Ouvrir : {a.title}
+                                    </Link>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-ink-soft">
+                              Aucun lien direct vers une fiche : parcours la rubrique{" "}
+                              <Link
+                                href="/conseils"
+                                className="font-semibold text-accent underline-offset-2 hover:underline"
+                                onClick={() => setOpen(false)}
+                              >
+                                Conseils DIY
+                              </Link>
+                              .
+                              {repairArticleError ? (
+                                <span className="block pt-1 text-warm">({repairArticleError})</span>
+                              ) : null}
+                            </p>
+                          )}
+                        </div>
                       )}
                       <button
                         type="button"

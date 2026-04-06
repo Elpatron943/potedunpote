@@ -427,11 +427,15 @@ export function formatRepairWizardForPrompt(answers: Record<string, string>): st
   return lines.join("\n");
 }
 
-export type RepairInterventionChoice = "artisan";
+export type RepairInterventionChoice = "artisan" | "diy";
 
 export const REPAIR_INTERVENTION_OPTIONS: {
   id: RepairInterventionChoice;
   label: string;
 }[] = [
   { id: "artisan", label: "Mise en relation — recherche d’un artisan sur le site" },
+  {
+    id: "diy",
+    label: "Je veux tenter la réparation moi-même — ouvrir la fiche conseil (DIY)",
+  },
 ];

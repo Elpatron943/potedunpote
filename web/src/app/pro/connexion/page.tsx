@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { ConnexionForm } from "@/components/connexion-form";
 import { PORTAIL_ACHETEUR_CONNEXION } from "@/lib/auth-portals";
@@ -22,7 +23,16 @@ function ConnexionFallback() {
 export default function ProConnexionPage() {
   return (
     <div className="min-h-[70vh] bg-canvas px-4 py-12 sm:px-6">
-      <div className="mx-auto max-w-lg text-center">
+      <p className="mx-auto max-w-lg text-center text-sm text-ink-soft">
+        <Link href="/pro" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+          ← Présentation Pro
+        </Link>
+        {" · "}
+        <Link href="/pro/forfaits" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+          Forfaits & tarifs
+        </Link>
+      </p>
+      <div className="mx-auto mt-6 max-w-lg text-center">
         <p className="text-xs font-semibold uppercase tracking-wider text-teal-800 dark:text-teal-300">
           Espace professionnel
         </p>

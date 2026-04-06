@@ -14,8 +14,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/recherche`, lastModified: now, changeFrequency: "daily", priority: 0.95 },
     { url: `${base}/conseils`, lastModified: now, changeFrequency: "weekly", priority: 0.85 },
     { url: `${base}/connexion`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${base}/pro`, lastModified: now, changeFrequency: "weekly", priority: 0.72 },
+    { url: `${base}/pro/forfaits`, lastModified: now, changeFrequency: "weekly", priority: 0.75 },
     { url: `${base}/pro/connexion`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
-    { url: `${base}/artisan/abonnement`, lastModified: now, changeFrequency: "weekly", priority: 0.75 },
   ];
 
   let articles: MetadataRoute.Sitemap = [];

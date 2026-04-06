@@ -37,6 +37,8 @@ export function ReviewForm({
   referentiel: SerializedBtpReferentiel;
 }) {
   const [state, formAction, pending] = useActionState(submitReview, initial);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [metierId, setMetierId] = useState("");
   const [specialiteId, setSpecialiteId] = useState("");
   const [amountPaidEuros, setAmountPaidEuros] = useState("");
@@ -70,7 +72,7 @@ export function ReviewForm({
           className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-950 dark:text-emerald-100"
           role="status"
         >
-          Merci ! Ton avis a bien été enregistré et sera publié après modération.
+          Merci ! Ton avis est publié sur cette fiche.
         </p>
       )}
       {state.ok === false && state.error ? (
@@ -81,6 +83,37 @@ export function ReviewForm({
           {state.error}
         </p>
       ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Prénom <span className="text-red-600">*</span>
+          </span>
+          <input
+            name="firstName"
+            autoComplete="given-name"
+            required
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none ring-0 focus:border-teal-500/60 dark:border-white/10"
+            placeholder="Ex. Camille"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Nom <span className="text-red-600">*</span>
+          </span>
+          <input
+            name="lastName"
+            autoComplete="family-name"
+            required
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none ring-0 focus:border-teal-500/60 dark:border-white/10"
+            placeholder="Ex. Martin"
+          />
+        </label>
+      </div>
 
       <p className="rounded-xl border border-ink/10 bg-canvas/50 px-4 py-3 text-xs leading-relaxed text-ink-soft dark:border-white/10 dark:bg-canvas-muted/30">
         Tu peux détailler la <strong className="font-medium text-ink">prestation</strong> et le{" "}

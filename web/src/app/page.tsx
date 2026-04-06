@@ -16,6 +16,7 @@ import { getVerifiedRegisteredSirens } from "@/lib/artisan-verified-sirens";
 import { ContactProButton } from "@/components/contact-pro-button";
 import { searchEntreprisesBtp, searchEntreprisesDirect } from "@/lib/recherche-entreprises";
 import { getPublishedReviewAggregatesBySiren } from "@/lib/reviews-aggregate";
+import { getPublishedAvgEurPerM2BySirenForPrestation } from "@/lib/reviews-price-aggregate";
 import { SearchResultReviewScore } from "@/components/search-result-review-score";
 
 export const metadata: Metadata = {
@@ -45,6 +46,8 @@ type PageProps = {
     act?: string | string[];
     /** Note minimale : moyenne des avis publiés ≥ cette valeur (1–5). */
     stars?: string;
+    /** Prix moyen au m² max (€/m²), pour la prestation sélectionnée (`act`). */
+    pmaxm2?: string;
     /** SIREN, SIRET ou dénomination (recherche directe). */
     entreprise?: string;
   }>;
@@ -65,6 +68,16 @@ function parseMinStarsParam(value: string | undefined): number | null {
   if (value == null || value === "") return null;
   const n = Number.parseInt(value, 10);
   if (!Number.isInteger(n) || n < 1 || n > 5) return null;
+  return n;
+}
+
+/** Seuil max en €/m² (décimales autorisées). */
+function parseMaxEurPerM2(value: string | undefined): number | null {
+  const t = (value ?? "").trim();
+  if (!t) return null;
+  const normalized = t.replace(/\s/g, "").replace(",", ".");
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0) return null;
   return n;
 }
 
@@ -92,6 +105,7 @@ export default async function HomePage({ searchParams }: PageProps) {
     ? []
     : filterSousActiviteIdsForMetier(btpRef, metierId, parseActParam(sp.act));
   const minStars = parseMinStarsParam(sp.stars);
+  const maxEurPerM2 = parseMaxEurPerM2(sp.pmaxm2);
   const apiPerPage = minStars != null ? 25 : 12;
 
   const shouldMetierSearch = !shouldDirectSearch && metierId.length > 0 && loc.length > 0;
@@ -131,15 +145,37 @@ export default async function HomePage({ searchParams }: PageProps) {
           return a != null && a.count > 0 && a.avg >= minStars;
         });
 
+  const pricePerM2Averages =
+    !shouldDirectSearch &&
+    shouldMetierSearch &&
+    validatedActs.length > 0 &&
+    maxEurPerM2 != null &&
+    maxEurPerM2 > 0 &&
+    filteredByStars.length > 0
+      ? await getPublishedAvgEurPerM2BySirenForPrestation(
+          filteredByStars.map((e) => e.siren),
+          metierId,
+          validatedActs,
+        )
+      : new Map<string, { avgEurPerM2: number; count: number }>();
+
+  const filteredByMaxEurPerM2 =
+    maxEurPerM2 == null
+      ? filteredByStars
+      : filteredByStars.filter((e) => {
+          const a = pricePerM2Averages.get(e.siren);
+          return a != null && a.count > 0 && a.avgEurPerM2 <= maxEurPerM2;
+        });
+
   const sortedFilteredEntreprises =
     minStars != null
-      ? [...filteredByStars].sort((a, b) => {
+      ? [...filteredByMaxEurPerM2].sort((a, b) => {
           const av = reviewAggregates.get(a.siren)?.avg ?? 0;
           const bv = reviewAggregates.get(b.siren)?.avg ?? 0;
           if (bv !== av) return bv - av;
           return a.nom.localeCompare(b.nom, "fr");
         })
-      : filteredByStars;
+      : filteredByMaxEurPerM2;
 
   let verifiedRegisteredSirens = new Set<string>();
   let premiumContactsBySiren = new Map<string, PremiumContactInfo>();
@@ -166,6 +202,9 @@ export default async function HomePage({ searchParams }: PageProps) {
     }
     if (rgeOnly) q.set("rge", "1");
     if (minStars != null) q.set("stars", String(minStars));
+    if (!shouldDirectSearch && validatedActs.length > 0 && maxEurPerM2 != null) {
+      q.set("pmaxm2", String(maxEurPerM2));
+    }
     if (p > 1) q.set("page", String(p));
     return `/?${q.toString()}`;
   };
@@ -226,7 +265,8 @@ export default async function HomePage({ searchParams }: PageProps) {
                   ou <strong className="font-medium text-ink">SIREN, SIRET ou raison sociale</strong>
                   . Filtres optionnels : sous-activités,{" "}
                   <strong className="font-medium text-ink">note minimale</strong> (avis publiés),{" "}
-                  <strong className="font-medium text-ink">RGE</strong>.
+                  <strong className="font-medium text-ink">prix moyen au m² max</strong> (si prestations
+                  cochées), <strong className="font-medium text-ink">RGE</strong>.
                 </p>
               </div>
             </div>
@@ -239,6 +279,7 @@ export default async function HomePage({ searchParams }: PageProps) {
               defaultRge={rgeOnly}
               defaultActs={validatedActs}
               defaultMinStars={minStars}
+              defaultMaxEurPerM2={sp.pmaxm2 ?? ""}
               defaultEntreprise={directEntreprise}
             />
           </div>

@@ -1,83 +1,101 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { getClientAccountUser } from "@/lib/client-account";
 
-import { requireProContext } from "@/lib/pro-auth";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+export const metadata: Metadata = {
+  title: "Espace professionnel",
+  description:
+    "Artisans du bâtiment : visibilité, fiche entreprise enrichie, contact clients et formules Pro sur Le pote d'un pote.",
+};
 
-export default async function ProHomePage() {
-  const ctx = await requireProContext();
-  if (!ctx.artisanProfile) {
-    redirect("/pro/onboarding");
-  }
-
-  const supabase = getSupabaseAdmin();
-  const { data: sub } = await supabase
-    .from("ProSubscription")
-    .select("id, planId, status, currentPeriodEnd, updatedAt")
-    .eq("userId", ctx.userId)
-    .maybeSingle();
-
-  const planId = (sub?.planId as string | undefined) ?? "—";
-  const status = (sub?.status as string | undefined) ?? "INACTIVE";
-  const until = (sub?.currentPeriodEnd as string | null | undefined) ?? null;
+export default async function ProLandingPage() {
+  const user = await getClientAccountUser();
+  const isArtisan = user?.role === "ARTISAN";
 
   return (
-    <div className="min-h-screen bg-canvas px-4 py-10 sm:px-6">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-8 border-b border-ink/10 pb-6 dark:border-white/10">
-          <p className="text-xs font-semibold uppercase tracking-wider text-teal-800 dark:text-teal-300">
-            Espace professionnel
+    <div className="min-h-screen bg-[#0f172a]">
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:max-w-4xl lg:px-8">
+        <p className="text-sm text-white/60">
+          <Link href="/" className="font-medium text-teal-300 hover:underline">
+            ← Accueil & recherche
+          </Link>
+        </p>
+
+        <header className="mt-8 text-center lg:text-left">
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-teal-300/90">
+            Professionnels du bâtiment
           </p>
-          <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl text-ink">
-            Tableau de bord
+          <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-semibold leading-tight text-white sm:text-4xl md:text-5xl">
+            Sois visible là où les clients cherchent un artisan
           </h1>
-          <p className="mt-2 text-sm text-ink-soft">
-            Compte : <span className="font-medium text-ink">{ctx.email}</span>
-            {ctx.artisanProfile?.siren ? (
-              <>
-                {" "}
-                · SIREN : <span className="font-medium text-ink">{ctx.artisanProfile.siren}</span>
-              </>
-            ) : null}
+          <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-white/75 lg:mx-0">
+            <strong className="font-semibold text-white">Le pote d&apos;un pote</strong> met en avant des
+            entreprises du BTP avec des fiches claires, des avis et des critères de recherche par métier et
+            zone. Les formules Pro permettent d&apos;activer le contact, d&apos;affiner ta prestation et,
+            selon le niveau, d&apos;aller plus loin (demandes, vitrine, pilotage).
           </p>
         </header>
 
-        <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm dark:border-white/10">
-          <h2 className="text-lg font-semibold text-ink">Offre & options</h2>
-          <p className="mt-2 text-sm text-ink-soft">
-            Statut : <span className="font-medium text-ink">{status}</span> · Plan :{" "}
-            <span className="font-medium text-ink">{planId}</span>
-            {until ? (
-              <>
-                {" "}
-                · fin période : <span className="font-medium text-ink">{new Date(until).toLocaleDateString("fr-FR")}</span>
-              </>
-            ) : null}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link
-              href="/pro/offre"
-              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500"
-            >
-              Choisir / modifier l’offre
-            </Link>
-            <Link
-              href="/pro/profil"
-              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-xl border border-ink/15 bg-canvas-muted/40 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-muted/60 dark:border-white/15 dark:bg-white/5"
-            >
-              Compléter mon profil (contact, prestations…)
-            </Link>
-          </div>
-        </section>
+        <ul className="mx-auto mt-10 max-w-2xl space-y-4 text-left text-white/85 lg:mx-0">
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 text-teal-400" aria-hidden>
+              ✓
+            </span>
+            <span>
+              <strong className="text-white">Fiche liée à ton SIREN</strong> — cohérence métier / entreprise,
+              compléments utiles pour les particuliers.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 text-teal-400" aria-hidden>
+              ✓
+            </span>
+            <span>
+              <strong className="text-white">Contact & crédibilité</strong> — bouton « Contacter », liens site,
+              réseaux, prestations déclarées.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 text-teal-400" aria-hidden>
+              ✓
+            </span>
+            <span>
+              <strong className="text-white">Formules adaptées</strong> — de l&apos;essentiel au pilotage
+              chantier ; détail et tarifs sur la page dédiée.
+            </span>
+          </li>
+        </ul>
 
-        <p className="mt-8 text-sm text-ink-soft">
-          Page “prix & explication” :{" "}
-          <Link href="/artisan/abonnement" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
-            /artisan/abonnement
+        <div className="mt-12 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start">
+          {isArtisan ? (
+            <Link
+              href="/pro/tableau"
+              className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl bg-teal-500 px-6 py-3 text-center text-base font-bold text-white shadow-lg shadow-teal-950/40 transition hover:bg-teal-400 sm:flex-none dark:bg-teal-600 dark:hover:bg-teal-500"
+            >
+              Tableau de bord
+            </Link>
+          ) : null}
+          <Link
+            href="/pro/forfaits"
+            className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl border-2 border-white/20 bg-white/5 px-6 py-3 text-center text-base font-semibold text-white transition hover:bg-white/10 sm:flex-none"
+          >
+            Voir les forfaits & tarifs
+          </Link>
+          <Link
+            href="/pro/connexion"
+            className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl border-2 border-teal-500/50 bg-teal-950/40 px-6 py-3 text-center text-base font-semibold text-teal-100 transition hover:bg-teal-900/60 sm:flex-none"
+          >
+            Connexion Pro
+          </Link>
+        </div>
+
+        <p className="mt-10 text-center text-sm text-white/50 lg:text-left">
+          Tu veux seulement laisser un avis en tant que particulier ?{" "}
+          <Link href="/connexion" className="font-medium text-teal-300 underline-offset-2 hover:underline">
+            Espace clients
           </Link>
         </p>
       </div>
     </div>
   );
 }
-

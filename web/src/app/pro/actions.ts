@@ -23,7 +23,7 @@ export async function proOnboardingAction(_prev: { ok: boolean; error?: string }
     return { ok: false, error: "Accès refusé." };
   }
   if (ctx.artisanProfile) {
-    redirect("/pro");
+    redirect("/pro/tableau");
   }
 
   const siren = parseSiren(formData.get("siren"));
@@ -54,7 +54,8 @@ export async function proOnboardingAction(_prev: { ok: boolean; error?: string }
   }
 
   revalidatePath("/pro");
-  redirect("/pro");
+  revalidatePath("/pro/tableau");
+  redirect("/pro/tableau");
 }
 
 export async function proSaveProfileAction(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
@@ -105,6 +106,7 @@ export async function proSaveProfileAction(_prev: { ok: boolean; error?: string 
   if (error) return { ok: false, error: "Sauvegarde impossible." };
 
   revalidatePath("/pro");
+  revalidatePath("/pro/tableau");
   revalidatePath("/pro/profil");
   return { ok: true };
 }
@@ -156,6 +158,7 @@ export async function proSelectOfferAction(_prev: { ok: boolean; error?: string 
   if (profErr) return { ok: false, error: "Mise à jour profil impossible." };
 
   revalidatePath("/pro");
+  revalidatePath("/pro/tableau");
   revalidatePath(`/entreprise/${ctx.artisanProfile.siren}`);
   return { ok: true };
 }

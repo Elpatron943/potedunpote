@@ -11,7 +11,7 @@ export default async function ProOfferPage() {
     <div className="min-h-screen bg-canvas px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-3xl">
         <p className="text-sm text-ink-soft">
-          <Link href="/pro" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+          <Link href="/pro/tableau" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
             ← Retour au tableau de bord
           </Link>
         </p>

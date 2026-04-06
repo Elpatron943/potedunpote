@@ -66,6 +66,7 @@ export function HomeSearchForm({
   defaultRge,
   defaultActs,
   defaultMinStars,
+  defaultMaxEurPerM2,
   defaultEntreprise,
 }: {
   metiers: MetierOpt[];
@@ -77,6 +78,8 @@ export function HomeSearchForm({
   defaultActs?: string[];
   /** Moyenne minimale des avis publiés (1–5), depuis l’URL (`stars`). */
   defaultMinStars?: number | null;
+  /** Prix moyen au m² max (€/m²), depuis l’URL (`pmaxm2`). */
+  defaultMaxEurPerM2?: string;
   /** Recherche directe SIREN / SIRET / raison sociale (`entreprise`). */
   defaultEntreprise?: string;
 }) {
@@ -89,6 +92,7 @@ export function HomeSearchForm({
 
   const [metier, setMetier] = useState(defaultMetier);
   const [acts, setActs] = useState<string[]>(() => asStringArray(defaultActs));
+  const [maxEurPerM2, setMaxEurPerM2] = useState(() => (defaultMaxEurPerM2 ?? "").trim());
 
   const sousActivites = useMemo(
     () => prestationsByMetierId[metier] ?? [],
@@ -216,6 +220,7 @@ export function HomeSearchForm({
         <>
           <input type="hidden" name="metier" value="" />
           <input type="hidden" name="loc" value="" />
+          <input type="hidden" name="pmaxm2" value="" />
           <label className="flex flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
               SIREN, SIRET ou dénomination sociale
@@ -368,6 +373,31 @@ export function HomeSearchForm({
             })}
           </ul>
         </fieldset>
+      )}
+
+      {searchMode === "metier" && asStringArray(acts).length === 0 ? (
+        <input type="hidden" name="pmaxm2" value="" />
+      ) : null}
+
+      {searchMode === "metier" && asStringArray(acts).length > 0 && (
+        <label className="flex flex-col gap-2 rounded-2xl border border-ink/10 bg-canvas/50 p-4 dark:border-white/10 dark:bg-canvas-muted/30">
+          <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Prix moyen au m² max (prestations cochées)
+          </span>
+          <input
+            name="pmaxm2"
+            inputMode="decimal"
+            value={maxEurPerM2}
+            onChange={(e) => setMaxEurPerM2(e.target.value)}
+            placeholder="ex. 85"
+            className="w-full rounded-xl border border-ink/10 bg-canvas/80 px-3 py-3 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+          />
+          <span className="text-xs leading-relaxed text-ink-soft">
+            Basé sur la <strong className="font-medium text-ink">moyenne du prix au m²</strong> (montant
+            déclaré ÷ surface) sur les avis publiés pour la ou les prestation(s) sélectionnée(s). Les
+            entreprises sans avis comparable (montant + surface) pour ces prestations sont masquées.
+          </span>
+        </label>
       )}
 
       <label className="flex flex-col gap-2 rounded-2xl border border-ink/10 bg-canvas/50 p-4 dark:border-white/10 dark:bg-canvas-muted/30">

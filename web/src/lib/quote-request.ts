@@ -539,7 +539,11 @@ export function validateQuoteRequestFields(
 }
 
 /** Score 0–100 pour inciter à compléter le dossier (UI acheteur). */
-export function quoteCompletenessScore(defs: QuoteFieldDef[], values: Record<string, string>): number {
+export function quoteCompletenessScore(
+  defs: QuoteFieldDef[],
+  values: Record<string, string>,
+  opts?: { localPhotoCount?: number },
+): number {
   const required = defs.filter((d) => d.required);
   const optional = defs.filter((d) => !d.required);
   let pts = 0;
@@ -553,5 +557,6 @@ export function quoteCompletenessScore(defs: QuoteFieldDef[], values: Record<str
     if ((values[d.key] ?? "").trim()) pts += optW;
   }
   if ((values.photoLinks ?? "").trim()) pts += 5;
+  if ((opts?.localPhotoCount ?? 0) > 0) pts += 5;
   return Math.min(max, Math.round(pts));
 }

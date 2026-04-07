@@ -11,6 +11,20 @@ export function quoteLeadsBucket(): string {
   return b;
 }
 
+/** Message actionnable quand Storage renvoie bucket introuvable / 404 (même logique que Kbis / avis). */
+export function quoteLeadStorageUserMessage(err: unknown, bucket: string): string {
+  const raw =
+    err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string"
+      ? String((err as { message: string }).message)
+      : err instanceof Error
+        ? err.message
+        : String(err);
+  if (/bucket|not found|404|does not exist/i.test(raw)) {
+    return `Stockage photos indisponible : crée le bucket Storage « ${bucket} » dans Supabase (Storage), ou définis SUPABASE_QUOTE_LEADS_BUCKET vers un bucket existant. Les photos vitrine utilisent SUPABASE_PROJECT_PHOTOS_BUCKET (défaut « pro-projects ») — un seul bucket peut servir aux deux.`;
+  }
+  return raw;
+}
+
 export function quoteSessionPrefix(sessionId: string): string {
   return `${QUOTE_LEADS_ROOT}/sessions/${sessionId}`;
 }
@@ -73,7 +87,7 @@ export async function uploadQuoteSessionFile(
     contentType: mime,
     upsert: false,
   });
-  if (error) throw error;
+  if (error) throw new Error(quoteLeadStorageUserMessage(error, bucket));
   return { storagePath: path, mimeType: mime };
 }
 
@@ -85,7 +99,7 @@ export async function finalizeQuoteLeadSession(sessionId: string, leadId: string
   const supabase = getSupabaseAdmin();
   const prefix = quoteSessionPrefix(sessionId);
   const { data: listed, error: listErr } = await supabase.storage.from(bucket).list(prefix, { limit: 100 });
-  if (listErr) throw listErr;
+  if (listErr) throw new Error(quoteLeadStorageUserMessage(listErr, bucket));
   const out: FinalizedAttachment[] = [];
   for (const item of listed ?? []) {
     if (!item.name) continue;

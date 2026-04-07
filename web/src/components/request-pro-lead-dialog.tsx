@@ -10,25 +10,29 @@ import {
   validateQuoteRequestFields,
   type QuoteFieldDef,
 } from "@/lib/quote-request";
+import {
+  QUOTE_VISION_FORM_FIELD,
+  QUOTE_VISION_MAX_BYTES,
+  QUOTE_VISION_MAX_FILES,
+} from "@/lib/quote-vision-inline";
 
 type Props = {
   siren: string;
   raisonSociale: string;
+  /** Compte connecté : e-mail affiché en lecture seule et envoyé tel quel. */
+  viewerEmail: string | null;
   open: boolean;
   onClose: () => void;
 };
 
-export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Props) {
+export function RequestProLeadDialog({ siren, raisonSociale, viewerEmail, open, onClose }: Props) {
   const titleId = useId();
   const [ref, setRef] = useState<SerializedBtpReferentiel | null>(null);
   const [refErr, setRefErr] = useState<string | null>(null);
   const [metierId, setMetierId] = useState("");
   const [prestationId, setPrestationId] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionErr, setSessionErr] = useState<string | null>(null);
-  const [uploadedCount, setUploadedCount] = useState(0);
-  const [uploadBusy, setUploadBusy] = useState(false);
+  const [visionFiles, setVisionFiles] = useState<File[]>([]);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [aiConsent, setAiConsent] = useState(false);
   const [pending, setPending] = useState(false);
@@ -40,9 +44,7 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
       setMetierId("");
       setPrestationId("");
       setFieldValues({});
-      setSessionId(null);
-      setSessionErr(null);
-      setUploadedCount(0);
+      setVisionFiles([]);
       setUploadErr(null);
       setAiConsent(false);
       setOk(false);
@@ -71,30 +73,6 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/quote-request/session", { method: "POST" });
-        const data = (await res.json()) as { sessionId?: string };
-        if (!res.ok || !data.sessionId) {
-          if (!cancelled) setSessionErr("Session photo indisponible (tu peux quand même envoyer des liens).");
-          return;
-        }
-        if (!cancelled) {
-          setSessionId(data.sessionId);
-          setSessionErr(null);
-        }
-      } catch {
-        if (!cancelled) setSessionErr("Session photo indisponible (tu peux quand même envoyer des liens).");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
   const prestations = useMemo(() => {
     if (!ref || !metierId) return [];
     return ref.prestationsByMetierId[metierId] ?? [];
@@ -107,13 +85,15 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
 
   const completeness = useMemo(() => {
     if (!prestationId || fieldDefs.length === 0) return null;
-    return quoteCompletenessScore(fieldDefs, fieldValues);
-  }, [prestationId, fieldDefs, fieldValues]);
+    return quoteCompletenessScore(fieldDefs, fieldValues, { localPhotoCount: visionFiles.length });
+  }, [prestationId, fieldDefs, fieldValues, visionFiles.length]);
 
   const resetQuoteFields = useCallback(() => {
     setPrestationId("");
     setFieldValues({});
     setAiConsent(false);
+    setVisionFiles([]);
+    setUploadErr(null);
   }, []);
 
   const onMetierChange = (id: string) => {
@@ -125,41 +105,42 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
     setPrestationId(id);
     setFieldValues({});
     setAiConsent(false);
+    setVisionFiles([]);
+    setUploadErr(null);
   };
 
   const setField = (key: string, value: string) => {
     setFieldValues((prev) => ({ ...prev, [key]: value }));
   };
 
-  const onPickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadErr(null);
-    const files = e.target.files;
-    if (!files?.length) return;
-    if (!sessionId) {
-      setUploadErr("Session non prête — réessaie dans un instant.");
-      e.target.value = "";
-      return;
-    }
-    setUploadBusy(true);
-    try {
-      for (const file of Array.from(files)) {
-        const fd = new FormData();
-        fd.set("sessionId", sessionId);
-        fd.set("file", file);
-        const res = await fetch("/api/quote-request/upload", { method: "POST", body: fd });
-        const data = (await res.json()) as { ok?: boolean; error?: string };
-        if (!res.ok || !data.ok) {
-          setUploadErr(data.error ?? "Upload impossible.");
-          break;
-        }
-        setUploadedCount((c) => c + 1);
+    const picked = e.target.files;
+    if (!picked?.length) return;
+    const next = [...visionFiles];
+    for (const file of Array.from(picked)) {
+      if (next.length >= QUOTE_VISION_MAX_FILES) {
+        setUploadErr(`Maximum ${QUOTE_VISION_MAX_FILES} photos.`);
+        break;
       }
-    } catch {
-      setUploadErr("Upload impossible.");
-    } finally {
-      setUploadBusy(false);
-      e.target.value = "";
+      if (file.size > QUOTE_VISION_MAX_BYTES) {
+        setUploadErr(`Chaque photo doit faire au plus ${QUOTE_VISION_MAX_BYTES / (1024 * 1024)} Mo.`);
+        break;
+      }
+      const t = (file.type || "").toLowerCase();
+      if (!/^image\/(jpeg|png|webp)$/.test(t)) {
+        setUploadErr("Formats acceptés : JPEG, PNG ou WebP.");
+        break;
+      }
+      next.push(file);
     }
+    setVisionFiles(next);
+    e.target.value = "";
+  };
+
+  const clearVisionFiles = () => {
+    setVisionFiles([]);
+    setUploadErr(null);
   };
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -167,6 +148,14 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
     setErr(null);
     setPending(true);
     setOk(false);
+
+    const fdNameCheck = new FormData(e.currentTarget);
+    const nameTrim = String(fdNameCheck.get("fullName") ?? "").trim();
+    if (nameTrim.length < 2) {
+      setErr("Merci d’indiquer ton nom (au moins 2 caractères).");
+      setPending(false);
+      return;
+    }
 
     if (prestationId) {
       const check = validateQuoteRequestFields(fieldDefs, fieldValues);
@@ -189,8 +178,10 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
       else fd.delete("metierId");
       if (prestationId) fd.set("prestationId", prestationId);
       else fd.delete("prestationId");
-      if (sessionId) fd.set("uploadSessionId", sessionId);
-      else fd.delete("uploadSessionId");
+      fd.delete("uploadSessionId");
+      for (const f of visionFiles) {
+        fd.append(QUOTE_VISION_FORM_FIELD, f);
+      }
 
       if (prestationId && fieldDefs.length > 0) {
         const payload: Record<string, unknown> = { v: QUOTE_REQUEST_VERSION };
@@ -202,8 +193,20 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
         fd.set("quoteRequestJson", JSON.stringify(payload));
       }
 
+      if (viewerEmail) {
+        fd.set("email", viewerEmail);
+      }
+
       const res = await fetch("/api/leads", { method: "POST", body: fd });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
+      const raw = await res.text();
+      let data: { ok?: boolean; error?: string };
+      try {
+        data = raw ? (JSON.parse(raw) as { ok?: boolean; error?: string }) : { ok: false };
+      } catch {
+        setErr(`Réponse serveur inattendue (${res.status}). Réessaie ou vérifie la console réseau.`);
+        setPending(false);
+        return;
+      }
       if (!res.ok || !data.ok) {
         setErr(data.error ?? "Impossible d’envoyer la demande.");
         setPending(false);
@@ -238,8 +241,9 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
         </h2>
         <p className="mt-2 text-sm text-ink-soft">
           Plus le dossier est complet (photos, surfaces, périmètre), plus le professionnel peut préparer un devis. Les
-          photos sont analysées pour une synthèse et des points de vigilance contextualisés (métier + clichés), sans prix
-          imposés.
+          photos que tu ajoutes ici ne sont pas enregistrées sur nos serveurs : elles sont transmises une seule fois pour
+          l’analyse IA (synthèse et points de vigilance), puis oubliées. Tu peux aussi coller des liens (Drive, etc.)
+          dans le questionnaire lorsque c’est proposé.
         </p>
 
         {ok ? (
@@ -248,7 +252,7 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
             espace.
           </p>
         ) : (
-          <form onSubmit={submit} className="mt-4 space-y-4">
+          <form noValidate onSubmit={submit} className="mt-4 space-y-4">
             {err ? (
               <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-900 dark:text-red-200">
                 {err}
@@ -260,25 +264,38 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
               <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Nom</span>
               <input
                 name="fullName"
-                required
+                autoComplete="name"
                 className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none focus:border-teal-500/60 dark:border-white/10"
                 placeholder="Ex. Camille"
               />
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">E-mail</span>
-                <input
-                  name="email"
-                  type="email"
-                  className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none focus:border-teal-500/60 dark:border-white/10"
-                  placeholder="ex. camille@mail.com"
-                />
-              </label>
+              {viewerEmail ? (
+                <div className="block sm:col-span-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">E-mail</span>
+                  <div className="mt-1 rounded-xl border border-ink/15 bg-ink/[0.04] px-3 py-2 text-sm text-ink dark:border-white/10 dark:bg-white/[0.06]">
+                    {viewerEmail}
+                  </div>
+                  <p className="mt-1 text-[11px] text-ink-soft">Compte connecté — adresse non modifiable ici.</p>
+                </div>
+              ) : (
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">E-mail</span>
+                  <input
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none focus:border-teal-500/60 dark:border-white/10"
+                    placeholder="ex. camille@mail.com"
+                  />
+                </label>
+              )}
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Téléphone</span>
                 <input
                   name="phone"
+                  type="tel"
+                  autoComplete="tel"
                   className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none focus:border-teal-500/60 dark:border-white/10"
                   placeholder="ex. 06 12 34 56 78"
                 />
@@ -336,19 +353,35 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
               ) : null}
 
               <div className="mt-3 rounded-lg border border-ink/10 bg-[var(--card)]/80 p-3 dark:border-white/10">
-                <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Photos (jusqu’à 6, max 4 Mo)</p>
-                {sessionErr ? <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">{sessionErr}</p> : null}
+                <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                  Photos pour l’IA (jusqu’à {QUOTE_VISION_MAX_FILES}, max {QUOTE_VISION_MAX_BYTES / (1024 * 1024)} Mo — non
+                  stockées)
+                </p>
+                <p className="mt-1 text-[11px] leading-snug text-ink-soft">
+                  Elles partiront avec ton envoi et serviront uniquement au brouillon d’analyse côté pro.
+                </p>
                 {uploadErr ? <p className="mt-1 text-xs text-red-700 dark:text-red-300">{uploadErr}</p> : null}
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   multiple
-                  disabled={!sessionId || uploadBusy}
                   onChange={onPickFiles}
                   className="mt-2 block w-full text-xs text-ink-soft file:mr-2 file:rounded-lg file:border-0 file:bg-teal-700 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
                 />
-                {uploadedCount > 0 ? (
-                  <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-200">{uploadedCount} fichier(s) prêt(s).</p>
+                {visionFiles.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-emerald-800 dark:text-emerald-200">
+                      {visionFiles.length} fichier{visionFiles.length > 1 ? "s" : ""} joint{visionFiles.length > 1 ? "s" : ""}{" "}
+                      à l’envoi.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={clearVisionFiles}
+                      className="text-xs font-semibold text-teal-800 underline decoration-teal-800/40 hover:decoration-teal-800 dark:text-teal-200"
+                    >
+                      Tout retirer
+                    </button>
+                  </div>
                 ) : null}
               </div>
 
@@ -368,14 +401,12 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
                             rows={3}
                             maxLength={d.maxLength}
                             placeholder={d.placeholder}
-                            required={d.required}
                             className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none focus:border-teal-500/60 dark:border-white/10"
                           />
                         ) : d.type === "select" ? (
                           <select
                             value={fieldValues[d.key] ?? ""}
                             onChange={(e) => setField(d.key, e.target.value)}
-                            required={d.required}
                             className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none focus:border-teal-500/60 dark:border-white/10"
                           >
                             {(d.options ?? []).map((o) => (
@@ -392,7 +423,6 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
                             inputMode={d.type === "number" ? "decimal" : undefined}
                             maxLength={d.maxLength}
                             placeholder={d.placeholder}
-                            required={d.required}
                             className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none focus:border-teal-500/60 dark:border-white/10"
                           />
                         )}
@@ -411,9 +441,10 @@ export function RequestProLeadDialog({ siren, raisonSociale, open, onClose }: Pr
                     className="mt-1 h-4 w-4 shrink-0 rounded border-ink/20 text-teal-700"
                   />
                   <span className="text-xs leading-relaxed text-ink">
-                    J’accepte qu’une analyse automatisée (IA) soit réalisée sur les informations et images que j’envoie,
-                    uniquement pour produire un brouillon d’aide au devis côté professionnel. Aucun prix définitif n’est
-                    imposé ; le pro valide toujours le devis.
+                    J’accepte qu’une analyse automatisée (IA) soit réalisée sur les informations et sur les images que
+                    j’envoie (celles-ci ne sont pas conservées sur la plateforme après analyse), uniquement pour produire
+                    un brouillon d’aide au devis côté professionnel. Aucun prix définitif n’est imposé ; le pro valide
+                    toujours le devis.
                   </span>
                 </label>
               ) : null}

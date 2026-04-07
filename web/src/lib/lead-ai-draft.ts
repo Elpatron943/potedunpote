@@ -5,6 +5,7 @@ import type { ChatCompletionContentPart } from "openai/resources/chat/completion
 import { matchQuoteRequestProfile, type SanitizedQuoteRequestPayload } from "@/lib/quote-request";
 import { quoteLeadsBucket } from "@/lib/quote-lead-files";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import type { QuoteVisionInlineImage } from "@/lib/quote-vision-inline";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_IMAGES_VISION = 4;
@@ -269,8 +270,27 @@ export async function runLeadAiDraft(params: {
   requestPayload: SanitizedQuoteRequestPayload | null;
   attachmentCount: number;
   attachmentStoragePaths: string[];
+  /** Images passées dans le POST (non stockées) — prioritaires sur le téléchargement Storage. */
+  inlineVisionImages?: QuoteVisionInlineImage[];
 }): Promise<LeadAiDraftRunResult> {
-  const images = await downloadLeadImages(params.attachmentStoragePaths);
+  const fromInline: { base64: string; mime: string }[] = [];
+  for (const img of params.inlineVisionImages ?? []) {
+    try {
+      const buf = Buffer.from(img.base64, "base64");
+      if (buf.length === 0 || buf.length > MAX_IMAGE_BYTES) continue;
+      const mime = (img.mime || "").trim().toLowerCase();
+      if (!mime.startsWith("image/")) continue;
+      fromInline.push({ base64: img.base64, mime: img.mime });
+    } catch {
+      /* ignore */
+    }
+  }
+  const fromInlineCapped = fromInline.slice(0, MAX_IMAGES_VISION);
+  const fromStorage =
+    params.attachmentStoragePaths.length > 0
+      ? await downloadLeadImages(params.attachmentStoragePaths)
+      : [];
+  const images = [...fromInlineCapped, ...fromStorage].slice(0, MAX_IMAGES_VISION);
   const stub = heuristicDraft(
     params.prestationId,
     params.requestPayload,
@@ -286,7 +306,7 @@ export async function runLeadAiDraft(params: {
     `Métier : ${params.metierLabel ?? "—"}`,
     `Prestation : ${params.prestationLabel ?? "—"}`,
     `Message libre client : ${params.message ?? "—"}`,
-    `Nombre de photos uploadées : ${params.attachmentCount} (dont ${images.length} analysées ici, max ${MAX_IMAGES_VISION})`,
+    `Nombre de photos pour le dossier : ${params.attachmentCount} (dont ${images.length} fournies au modèle ici, max ${MAX_IMAGES_VISION} ; les clichés peuvent avoir été transmis uniquement pour cette analyse, sans archivage).`,
     `Dossier structuré (JSON) : ${params.requestPayload ? JSON.stringify(params.requestPayload) : "{}"}`,
     images.length > 0
       ? "Les images suivantes sont celles du client : décris ce que tu observes et en déduis des vigilancePoints précis (thème métier + observation visuelle + vigilance)."

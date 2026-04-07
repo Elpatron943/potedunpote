@@ -90,6 +90,7 @@ export function EntrepriseFiche({
   publishedReviews,
   myReview,
   isLoggedIn,
+  viewerEmail,
   priceStats,
   btpReferentiel,
   premiumContact,
@@ -99,6 +100,8 @@ export function EntrepriseFiche({
   publishedReviews: PublicReviewPayload[];
   myReview: { id: string; status: ReviewStatus } | null;
   isLoggedIn: boolean;
+  /** E-mail du compte connecté (demande de devis : champ figé). */
+  viewerEmail: string | null;
   priceStats: PublishedPriceStats | null;
   btpReferentiel: SerializedBtpReferentiel;
   premiumContact: PremiumContactInfo | null;
@@ -128,7 +131,11 @@ export function EntrepriseFiche({
             </span>
             <ContactProButton raisonSociale={detail.nom} contact={premiumContact} />
             {proPlan?.active && hasPlanAtLeast(proPlan.planId, "relation") ? (
-              <RequestProLeadButton siren={detail.siren} raisonSociale={detail.nom} />
+              <RequestProLeadButton
+                siren={detail.siren}
+                raisonSociale={detail.nom}
+                viewerEmail={viewerEmail}
+              />
             ) : null}
           </div>
         ) : null}

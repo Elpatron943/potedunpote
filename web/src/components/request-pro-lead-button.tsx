@@ -7,9 +7,12 @@ import { RequestProLeadDialog } from "@/components/request-pro-lead-dialog";
 export function RequestProLeadButton({
   siren,
   raisonSociale,
+  viewerEmail,
 }: {
   siren: string;
   raisonSociale: string;
+  /** Si renseigné, l’e-mail de la demande est celui du compte (non modifiable). */
+  viewerEmail: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -26,7 +29,13 @@ export function RequestProLeadButton({
       >
         Demander un devis
       </button>
-      <RequestProLeadDialog siren={siren} raisonSociale={raisonSociale} open={open} onClose={close} />
+      <RequestProLeadDialog
+        siren={siren}
+        raisonSociale={raisonSociale}
+        viewerEmail={viewerEmail}
+        open={open}
+        onClose={close}
+      />
     </>
   );
 }

@@ -18,7 +18,12 @@ export async function POST(req: Request) {
     const { storagePath, mimeType } = await uploadQuoteSessionFile(sessionId, file);
     return NextResponse.json({ ok: true, storagePath, mimeType });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Upload impossible.";
+    const msg =
+      e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string"
+        ? String((e as { message: string }).message)
+        : e instanceof Error
+          ? e.message
+          : "Upload impossible.";
     return NextResponse.json({ ok: false, error: msg }, { status: 400 });
   }
 }

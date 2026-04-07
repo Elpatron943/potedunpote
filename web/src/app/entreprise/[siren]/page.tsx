@@ -7,6 +7,7 @@ import { getPublishedPriceStatsForSiren } from "@/lib/reviews-price-stats";
 import { getPublishedReviewsForSiren, getUserReviewForSiren } from "@/lib/reviews-queries";
 import { getPremiumContactForSiren } from "@/lib/artisan-premium-contact";
 import { getBtpReferentiel, serializeBtpReferentiel } from "@/lib/btp-referentiel";
+import { getClientAccountUser } from "@/lib/client-account";
 import { getPublicProPlanForSiren } from "@/lib/pro-plan-public";
 import { EntrepriseFiche } from "./entreprise-fiche";
 
@@ -62,15 +63,18 @@ export default async function EntreprisePage({ params }: PageProps) {
     );
   }
 
-  const [publishedReviews, myReview, priceStats, btpRef, premiumContact, proPlan] = await Promise.all([
-    getPublishedReviewsForSiren(siren),
-    session ? getUserReviewForSiren(session.userId, siren) : Promise.resolve(null),
-    getPublishedPriceStatsForSiren(siren),
-    getBtpReferentiel(),
-    getPremiumContactForSiren(siren),
-    getPublicProPlanForSiren(siren),
-  ]);
+  const [publishedReviews, myReview, priceStats, btpRef, premiumContact, proPlan, clientAccount] =
+    await Promise.all([
+      getPublishedReviewsForSiren(siren),
+      session ? getUserReviewForSiren(session.userId, siren) : Promise.resolve(null),
+      getPublishedPriceStatsForSiren(siren),
+      getBtpReferentiel(),
+      getPremiumContactForSiren(siren),
+      getPublicProPlanForSiren(siren),
+      session ? getClientAccountUser() : Promise.resolve(null),
+    ]);
   const btpReferentiel = serializeBtpReferentiel(btpRef);
+  const viewerEmail = clientAccount?.email?.trim() || null;
 
   return (
     <div className="min-h-screen bg-canvas px-4 py-10 sm:px-6">
@@ -88,6 +92,7 @@ export default async function EntreprisePage({ params }: PageProps) {
           publishedReviews={publishedReviews}
           myReview={myReview}
           isLoggedIn={session != null}
+          viewerEmail={viewerEmail}
           priceStats={priceStats}
           btpReferentiel={btpReferentiel}
           premiumContact={premiumContact}

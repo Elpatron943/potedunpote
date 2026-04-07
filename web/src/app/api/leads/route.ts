@@ -15,7 +15,12 @@ import {
   validateQuoteRequestFields,
 } from "@/lib/quote-request";
 import { finalizeQuoteLeadSession, isValidQuoteSessionId } from "@/lib/quote-lead-files";
+import { parseQuoteVisionImagesFromFormData } from "@/lib/quote-vision-inline";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  getProUserEmailForSiren,
+  sendProLeadNotificationEmail,
+} from "@/lib/pro-lead-notification-email";
 import { getPublicProPlanForSiren } from "@/lib/pro-plan-public";
 import { hasPlanAtLeast } from "@/lib/pro-plan";
 
@@ -24,6 +29,7 @@ function asText(v: FormDataEntryValue | null): string {
 }
 
 export async function POST(req: Request) {
+  try {
   const fd = await req.formData();
   const siren = asText(fd.get("siren"));
   if (!/^\d{9}$/.test(siren)) {
@@ -105,6 +111,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Session d’upload invalide." }, { status: 400 });
   }
 
+  const visionParsed = await parseQuoteVisionImagesFromFormData(fd);
+  if (!visionParsed.ok) {
+    return NextResponse.json({ ok: false, error: visionParsed.error }, { status: 400 });
+  }
+  const inlineVisionImages = visionParsed.images;
+
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
   const leadId = createId();
@@ -124,11 +136,24 @@ export async function POST(req: Request) {
     createdAt: now,
     updatedAt: now,
   });
-  if (insertErr) throw insertErr;
+  if (insertErr) {
+    console.error("[leads] ProLead insert", insertErr);
+    const hint =
+      typeof insertErr.message === "string" &&
+      (/column|schema|relation|does not exist/i.test(insertErr.message) ||
+        String(insertErr.code ?? "").startsWith("PGRST"))
+        ? " Base de données : exécute les migrations récentes (ProLead, pièces jointes, brouillon IA)."
+        : "";
+    return NextResponse.json(
+      { ok: false, error: `Impossible d’enregistrer la demande.${hint}` },
+      { status: 500 },
+    );
+  }
 
-  let attachmentCount = 0;
+  let attachmentCount = inlineVisionImages.length;
   let attachmentStoragePaths: string[] = [];
-  if (uploadSessionId) {
+  /** Stockage Storage uniquement si aucune photo inline (rétrocompat / autres clients). */
+  if (inlineVisionImages.length === 0 && uploadSessionId) {
     try {
       const finalized = await finalizeQuoteLeadSession(uploadSessionId, leadId);
       attachmentCount = finalized.length;
@@ -173,6 +198,31 @@ export async function POST(req: Request) {
     console.error("[leads] ai draft pending", pendErr);
   }
 
+  const proNotifyEmail = await getProUserEmailForSiren(siren);
+  if (proNotifyEmail) {
+    const prestationLine =
+      metierLabel && prestationLabel
+        ? `${metierLabel} — ${prestationLabel}`
+        : metierLabel ?? prestationLabel ?? null;
+    const messageExcerpt =
+      message && message.length > 500 ? `${message.slice(0, 500)}…` : message;
+
+    after(() => {
+      void sendProLeadNotificationEmail({
+        to: proNotifyEmail,
+        clientName: fullName,
+        prestationLine,
+        demanderEmail: email,
+        demanderPhone: phone,
+        messageExcerpt,
+      }).then((r) => {
+        if (!r.ok) console.error("[leads] notification pro", r.message);
+      });
+    });
+  } else if (process.env.NODE_ENV === "development") {
+    console.warn("[leads] Aucun e-mail compte pro pour ce SIREN — notification non envoyée.");
+  }
+
   after(() => {
     void (async () => {
       try {
@@ -184,6 +234,7 @@ export async function POST(req: Request) {
           requestPayload,
           attachmentCount,
           attachmentStoragePaths,
+          inlineVisionImages: inlineVisionImages.length > 0 ? inlineVisionImages : undefined,
         });
         await persistProLeadAiDraft(leadId, run);
       } catch (e) {
@@ -193,4 +244,18 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json({ ok: true, leadId });
+  } catch (e) {
+    console.error("[leads] POST", e);
+    const msg =
+      e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string"
+        ? String((e as { message: string }).message)
+        : e instanceof Error
+          ? e.message
+          : "";
+    const hint = /column|schema|relation|does not exist/i.test(msg) ? " Vérifie que les migrations Prisma sont appliquées." : "";
+    return NextResponse.json(
+      { ok: false, error: `Erreur serveur lors de l’envoi.${hint || " Réessaie dans un instant."}` },
+      { status: 500 },
+    );
+  }
 }

@@ -13,6 +13,8 @@ import { aiSuggestedLinesToQuoteLinesJson, buildChantierNotesFromLead } from "@/
 import { requireProContext } from "@/lib/pro-auth";
 import { hasPlanAtLeast } from "@/lib/pro-plan";
 import { parseOptionalAmountEurosToCents } from "@/lib/parse-amount-euros";
+import { parseClientEmailField, resolveQuoteRecipientEmail } from "@/lib/pro-quote-recipient";
+import { sendProQuoteToClientEmail } from "@/lib/pro-quote-client-email";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 function requirePilotage(ctx: Awaited<ReturnType<typeof requireProContext>>) {
@@ -20,6 +22,8 @@ function requirePilotage(ctx: Awaited<ReturnType<typeof requireProContext>>) {
   const planId = ctx.subscription.planId;
   if (!ctx.subscription.isActive || !planId || !hasPlanAtLeast(planId, "pilotage")) redirect("/pro/offre");
 }
+
+const QUOTE_STATUSES_SEND = new Set(["DRAFT", "SENT"]);
 
 export async function createProjectAction(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
   const ctx = await requireProContext();
@@ -62,6 +66,11 @@ export async function createChantierFromLeadAction(
   const withDraftQuote = String(formData.get("withDraftQuote") ?? "").trim() === "1";
 
   const supabase = getSupabaseAdmin();
+  const { data: existingProj } = await supabase.from("ProProject").select("id").eq("sourceLeadId", leadId).maybeSingle();
+  if (existingProj?.id) {
+    return { ok: false, error: "Un chantier existe déjà pour cette demande." };
+  }
+
   const { data: lead, error: leadErr } = await supabase
     .from("ProLead")
     .select("id,siren,fullName,email,phone,message,metierId,prestationId,requestPayload")
@@ -70,6 +79,9 @@ export async function createChantierFromLeadAction(
   if (leadErr || !lead || (lead.siren as string) !== ctx.artisanProfile!.siren) {
     return { ok: false, error: "Demande introuvable." };
   }
+
+  const leadEmailRaw = String(lead.email ?? "").trim();
+  const clientEmail = leadEmailRaw.length > 0 ? leadEmailRaw.slice(0, 320) : null;
 
   const ref = await getBtpReferentiel();
   const metierId = lead.metierId as string | null;
@@ -109,6 +121,8 @@ export async function createChantierFromLeadAction(
     siren: ctx.artisanProfile!.siren,
     title,
     clientName,
+    sourceLeadId: leadId,
+    clientEmail,
     status: "OPEN",
     notes: notes.length > 0 ? notes : null,
     createdAt: now,
@@ -126,10 +140,13 @@ export async function createChantierFromLeadAction(
         projectId,
         number,
         status: "DRAFT",
+        source: "LEAD",
         currency: "EUR",
         totalCents: 0,
         linesJson: lines,
         issuedAt: null,
+        sentAt: null,
+        acceptedAt: null,
         createdAt: now,
         updatedAt: now,
       });
@@ -183,10 +200,13 @@ export async function createQuoteAction(_prev: { ok: boolean; error?: string } |
     projectId,
     number,
     status: "DRAFT",
+    source: "MANUAL",
     currency: "EUR",
     totalCents,
     linesJson: linesParsed.value,
     issuedAt: null,
+    sentAt: null,
+    acceptedAt: null,
     createdAt: now,
     updatedAt: now,
   });
@@ -227,6 +247,7 @@ export async function createInvoiceAction(_prev: { ok: boolean; error?: string }
     linesJson: linesParsed.value,
     issuedAt: null,
     paidAt: null,
+    sourceQuoteId: null,
     createdAt: now,
     updatedAt: now,
   });
@@ -352,6 +373,196 @@ export async function addExpenseAction(_prev: { ok: boolean; error?: string } | 
     createdAt: new Date().toISOString(),
   });
   if (error) return { ok: false, error: "Ajout dépense impossible." };
+  revalidatePath(`/pro/chantiers/${projectId}`);
+  return { ok: true };
+}
+
+export async function updateProjectClientEmailAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const email = parseClientEmailField(formData.get("clientEmail"));
+  if (!projectId) return { ok: false, error: "Projet invalide." };
+  if (!email) return { ok: false, error: "E-mail client invalide." };
+
+  const supabase = getSupabaseAdmin();
+  const { data: proj } = await supabase.from("ProProject").select("id,siren").eq("id", projectId).maybeSingle();
+  if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("ProProject").update({ clientEmail: email, updatedAt: now }).eq("id", projectId);
+  if (error) return { ok: false, error: "Enregistrement impossible." };
+  revalidatePath(`/pro/chantiers/${projectId}`);
+  return { ok: true };
+}
+
+export async function sendQuoteToClientAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  if (!projectId || !quoteId) return { ok: false, error: "Données invalides." };
+
+  const supabase = getSupabaseAdmin();
+  const { data: proj } = await supabase.from("ProProject").select("*").eq("id", projectId).maybeSingle();
+  if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+
+  const { data: q } = await supabase
+    .from("ProQuote")
+    .select("id,projectId,number,status,totalCents,linesJson,issuedAt")
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (!q || (q.projectId as string) !== projectId) return { ok: false, error: "Devis introuvable." };
+
+  const status = String(q.status ?? "DRAFT");
+  if (!QUOTE_STATUSES_SEND.has(status)) {
+    return { ok: false, error: "Seul un devis en brouillon ou déjà envoyé peut être envoyé par e-mail." };
+  }
+
+  const to = await resolveQuoteRecipientEmail(supabase, {
+    sourceLeadId: proj.sourceLeadId as string | null | undefined,
+    clientEmail: proj.clientEmail as string | null | undefined,
+  });
+  if (!to) {
+    return {
+      ok: false,
+      error:
+        "Aucun e-mail trouvé pour le demandeur. Vérifiez la demande entrante ou enregistrez un e-mail client sur le chantier.",
+    };
+  }
+
+  const { data: ap } = await supabase
+    .from("ArtisanProfile")
+    .select("vitrineHeadline,siren")
+    .eq("siren", proj.siren as string)
+    .maybeSingle();
+  const headline = typeof ap?.vitrineHeadline === "string" ? ap.vitrineHeadline.trim() : "";
+  const artisanLabel = headline.length > 0 ? headline : `Artisan (SIREN ${proj.siren as string})`;
+
+  const sent = await sendProQuoteToClientEmail({
+    to,
+    artisanLabel,
+    clientName: typeof proj.clientName === "string" ? proj.clientName.trim() : null,
+    quoteNumber: String(q.number ?? "—"),
+    totalCents: typeof q.totalCents === "number" ? q.totalCents : 0,
+    linesJson: q.linesJson,
+  });
+  if (!sent.ok) return { ok: false, error: sent.message };
+
+  const now = new Date().toISOString();
+  const prevIssued = q.issuedAt as string | null | undefined;
+  const { error: upErr } = await supabase
+    .from("ProQuote")
+    .update({
+      status: "SENT",
+      sentAt: now,
+      issuedAt: prevIssued ?? now,
+      updatedAt: now,
+    })
+    .eq("id", quoteId);
+  if (upErr) return { ok: false, error: "Mise à jour du devis impossible." };
+
+  revalidatePath(`/pro/chantiers/${projectId}`);
+  return { ok: true };
+}
+
+export async function acceptQuoteAsOrderAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  if (!projectId || !quoteId) return { ok: false, error: "Données invalides." };
+
+  const supabase = getSupabaseAdmin();
+  const { data: proj } = await supabase.from("ProProject").select("siren").eq("id", projectId).maybeSingle();
+  if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+
+  const { data: q } = await supabase.from("ProQuote").select("id,projectId,status").eq("id", quoteId).maybeSingle();
+  if (!q || (q.projectId as string) !== projectId) return { ok: false, error: "Devis introuvable." };
+  if ((q.status as string) !== "SENT") {
+    return { ok: false, error: "Le devis doit d’abord être envoyé au client, puis marqué comme accepté (commande)." };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("ProQuote")
+    .update({ status: "ACCEPTED", acceptedAt: now, updatedAt: now })
+    .eq("id", quoteId);
+  if (error) return { ok: false, error: "Mise à jour impossible." };
+  revalidatePath(`/pro/chantiers/${projectId}`);
+  return { ok: true };
+}
+
+export async function createInvoiceFromQuoteAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  const numberRaw = String(formData.get("number") ?? "").trim().slice(0, 40);
+  if (!projectId || !quoteId) return { ok: false, error: "Données invalides." };
+
+  const supabase = getSupabaseAdmin();
+  const { data: proj } = await supabase.from("ProProject").select("siren").eq("id", projectId).maybeSingle();
+  if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+
+  const { data: q } = await supabase
+    .from("ProQuote")
+    .select("id,projectId,status,totalCents,linesJson,currency")
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (!q || (q.projectId as string) !== projectId) return { ok: false, error: "Devis introuvable." };
+  if ((q.status as string) !== "ACCEPTED") {
+    return { ok: false, error: "Le devis doit être en commande (accepté) avant de générer la facture." };
+  }
+
+  const { data: existingInv } = await supabase.from("ProInvoice").select("id").eq("sourceQuoteId", quoteId).maybeSingle();
+  if (existingInv?.id) return { ok: false, error: "Une facture existe déjà pour ce devis." };
+
+  const day = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const number = numberRaw || `FAC-${day}-${createId().slice(0, 6)}`.slice(0, 40);
+
+  const now = new Date().toISOString();
+  const invId = createId();
+  const currency = typeof q.currency === "string" && q.currency.trim() ? q.currency.trim() : "EUR";
+  const totalCents = typeof q.totalCents === "number" ? q.totalCents : 0;
+
+  const { error: invErr } = await supabase.from("ProInvoice").insert({
+    id: invId,
+    projectId,
+    number,
+    status: "DRAFT",
+    currency,
+    totalCents,
+    linesJson: q.linesJson ?? null,
+    issuedAt: null,
+    paidAt: null,
+    sourceQuoteId: quoteId,
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (invErr) return { ok: false, error: "Création facture impossible." };
+
+  const { error: qErr } = await supabase
+    .from("ProQuote")
+    .update({ status: "INVOICED", updatedAt: now })
+    .eq("id", quoteId);
+  if (qErr) {
+    await supabase.from("ProInvoice").delete().eq("id", invId);
+    return { ok: false, error: "Mise à jour du devis impossible." };
+  }
+
   revalidatePath(`/pro/chantiers/${projectId}`);
   return { ok: true };
 }

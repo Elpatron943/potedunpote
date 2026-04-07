@@ -235,6 +235,8 @@ model ProLead {
 
   attachments ProLeadAttachment[]
   aiDraft     ProLeadAiDraft?
+  /// Chantier Pilotage créé depuis cette demande (au plus un).
+  sourceProject ProProject?
 
   @@index([siren])
   @@index([requesterUserId])
@@ -284,6 +286,11 @@ model ProProject {
   artisan   ArtisanProfile @relation(fields: [siren], references: [siren], onDelete: Cascade)
   title     String
   clientName String?
+  /// Demande entrante à l’origine du chantier (devis « lié »).
+  sourceLeadId String? @unique
+  sourceLead   ProLead? @relation(fields: [sourceLeadId], references: [id], onDelete: SetNull)
+  /// Pour envoyer les devis par e-mail au client.
+  clientEmail  String?
   status    String   @default("OPEN")
   notes     String?  @db.Text
   createdAt DateTime @default(now())
@@ -303,13 +310,20 @@ model ProQuote {
   projectId String
   project   ProProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   number    String
+  /// DRAFT | SENT | ACCEPTED (commande) | INVOICED | CANCELLED
   status    String   @default("DRAFT")
+  /// LEAD (issu demande + brouillon IA) | MANUAL
+  source    String   @default("MANUAL")
   currency  String   @default("EUR")
   totalCents Int     @default(0)
   linesJson Json?
   issuedAt  DateTime?
+  sentAt    DateTime?
+  acceptedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  invoicesFromQuote ProInvoice[] @relation("InvoiceFromQuote")
 
   @@index([projectId])
 }
@@ -325,10 +339,13 @@ model ProInvoice {
   linesJson Json?
   issuedAt  DateTime?
   paidAt    DateTime?
+  sourceQuoteId String?
+  sourceQuote   ProQuote? @relation("InvoiceFromQuote", fields: [sourceQuoteId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([projectId])
+  @@index([sourceQuoteId])
 }
 
 model ProTimeEntry {

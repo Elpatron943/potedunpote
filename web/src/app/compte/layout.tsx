@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { logoutAction } from "@/app/auth-actions";
 import { requireClientAccountPage } from "@/lib/client-account";
 
 export default async function CompteLayout({ children }: { children: React.ReactNode }) {
@@ -56,14 +55,9 @@ export default async function CompteLayout({ children }: { children: React.React
               Conseils DIY
             </Link>
           </nav>
-          <form action={logoutAction} className="mt-8">
-            <button
-              type="submit"
-              className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-left text-sm font-medium text-white/85 transition hover:bg-white/10"
-            >
-              Déconnexion
-            </button>
-          </form>
+          <p className="mt-8 text-xs text-white/45">
+            Déconnexion et réglages du profil pro : menu en haut à droite du portail.
+          </p>
         </aside>
         <div className="min-w-0 flex-1 bg-canvas px-4 py-8 sm:px-8 md:py-10">{children}</div>
       </div>

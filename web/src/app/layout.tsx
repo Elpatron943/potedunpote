@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { PortalHeader } from "@/components/portal-header";
 import { SiteHeader } from "@/components/site-header";
 import { SiteChatbot } from "@/components/site-chatbot";
+import { getPortalSessionInfo } from "@/lib/portal-session";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,19 +37,22 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const portalInfo = await getPortalSessionInfo();
+  const showChatbotForVisitor = portalInfo == null || !portalInfo.hasArtisanProfile;
+
   return (
     <html lang="fr">
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}
       >
-        <SiteHeader />
+        {portalInfo ? <PortalHeader info={portalInfo} /> : <SiteHeader />}
         {children}
-        <SiteChatbot />
+        {showChatbotForVisitor ? <SiteChatbot /> : null}
       </body>
     </html>
   );

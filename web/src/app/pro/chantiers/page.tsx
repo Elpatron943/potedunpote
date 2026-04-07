@@ -16,9 +16,10 @@ export default async function ProChantiersPage() {
   }
 
   const supabase = getSupabaseAdmin();
+  // `*` évite l’erreur PG 42703 si la migration workflow (sourceLeadId, …) n’est pas encore appliquée sur la base.
   const { data: projects, error } = await supabase
     .from("ProProject")
-    .select("id,title,clientName,status,createdAt")
+    .select("*")
     .eq("siren", ctx.artisanProfile.siren)
     .order("createdAt", { ascending: false })
     .limit(200);
@@ -59,17 +60,24 @@ export default async function ProChantiersPage() {
             <p className="mt-3 text-sm text-ink-soft">Aucun chantier.</p>
           ) : (
             <ul className="mt-4 space-y-3">
-              {(projects as any[]).map((p) => (
-                <li key={p.id as string} className="rounded-xl border border-ink/10 bg-canvas/40 px-4 py-3 dark:border-white/10 dark:bg-canvas-muted/20">
+              {(projects as Record<string, unknown>[]).map((p) => (
+                <li key={String(p.id)} className="rounded-xl border border-ink/10 bg-canvas/40 px-4 py-3 dark:border-white/10 dark:bg-canvas-muted/20">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-ink">{p.title as string}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-ink">{String(p.title ?? "")}</p>
+                        {p.sourceLeadId ? (
+                          <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-900 ring-1 ring-violet-500/25 dark:bg-violet-500/20 dark:text-violet-100 dark:ring-violet-400/30">
+                            Demande entrante
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="mt-0.5 text-xs text-ink-soft">
-                        {(p.clientName as string | null) ? `Client : ${p.clientName as string} · ` : ""}Statut {(p.status as string) || "OPEN"}
+                        {p.clientName ? `Client : ${String(p.clientName)} · ` : ""}Statut {String(p.status ?? "OPEN")}
                       </p>
                     </div>
                     <Link
-                      href={`/pro/chantiers/${p.id as string}`}
+                      href={`/pro/chantiers/${String(p.id)}`}
                       className="inline-flex min-h-[2.25rem] items-center justify-center rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500"
                     >
                       Ouvrir →

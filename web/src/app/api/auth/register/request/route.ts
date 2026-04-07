@@ -24,7 +24,8 @@ export async function POST(req: Request) {
   const password = body.password ?? "";
   const name = (body.name ?? "").trim() || null;
   const portalRaw = (body.portal ?? "acheteur").trim().toLowerCase();
-  const role = portalRaw === "pro" ? "ARTISAN" : "CLIENT";
+  /** Tous les comptes sont des comptes « membre » ; le statut pro vient uniquement du Kbis + `ArtisanProfile`. */
+  const role = "CLIENT";
   if (portalRaw !== "pro" && portalRaw !== "acheteur") {
     return NextResponse.json({ error: "Portail d'inscription invalide." }, { status: 400 });
   }
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
   const sent = await sendSignupOtpEmail({
     to: email,
     code: plainOtp,
-    isPro: role === "ARTISAN",
+    isPro: portalRaw === "pro",
   });
 
   if (!sent.ok) {

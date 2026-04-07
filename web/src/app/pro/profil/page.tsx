@@ -3,12 +3,15 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { requireProContext } from "@/lib/pro-auth";
+import { hasPlanAtLeast } from "@/lib/pro-plan";
 import { ProProfileForm } from "./pro-profile-form";
 import { getBtpReferentiel, serializeBtpReferentiel } from "@/lib/btp-referentiel";
 
 export default async function ProProfilePage() {
   const ctx = await requireProContext();
   if (!ctx.artisanProfile) redirect("/pro/onboarding");
+  const planId = ctx.subscription.planId;
+  const canEditVitrine = ctx.subscription.isActive && planId != null && hasPlanAtLeast(planId, "vitrine");
   const ref = serializeBtpReferentiel(await getBtpReferentiel());
 
   return (
@@ -30,6 +33,12 @@ export default async function ProProfilePage() {
           <p className="mt-2 text-sm text-ink-soft">
             Ces informations alimentent le bouton <strong className="text-ink">Contacter</strong> et les filtres de recherche.
           </p>
+          {!canEditVitrine ? (
+            <p className="mt-3 text-xs text-ink-soft">
+              La section <strong className="text-ink">Vitrine</strong> est disponible avec l’offre{" "}
+              <strong className="text-ink">Pro Vitrine</strong> ou <strong className="text-ink">Pro Pilotage</strong>.
+            </p>
+          ) : null}
         </header>
 
         <div className="mt-8">

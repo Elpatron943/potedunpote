@@ -1,11 +1,15 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { ProOnboardingForm } from "./pro-onboarding-form";
 import { requireProContext } from "@/lib/pro-auth";
 
 export default async function ProOnboardingPage() {
   const ctx = await requireProContext();
+  if (ctx.artisanProfile) {
+    redirect("/pro/tableau");
+  }
 
   return (
     <div className="min-h-[70vh] bg-canvas px-4 py-12 sm:px-6">
@@ -17,10 +21,11 @@ export default async function ProOnboardingPage() {
           Associer ton entreprise
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Dépose un <strong className="text-ink">Kbis de moins de 3 mois</strong> (mention « À jour au … »
-          lisible), au format image, et indique le <strong className="text-ink">SIREN</strong>. Vérification
-          automatique du document et de la date :{" "}
-          <strong className="text-ink">ton profil Pro n’est créé qu’après validation</strong>.
+          Même si tu t’es inscrit comme <strong className="text-ink">particulier</strong>, tu peux activer
+          l’espace pro ici : ce n’est qu’<strong className="text-ink">après cette vérification Kbis</strong>{" "}
+          qu’un profil entreprise est créé. Dépose un <strong className="text-ink">Kbis de moins de 3 mois</strong>{" "}
+          (mention « À jour au … » lisible), au format image, et indique le <strong className="text-ink">SIREN</strong>
+          . Vérification automatique du document et de la date.
         </p>
         <p className="mt-3 text-sm text-ink-soft">
           Compte connecté : <span className="font-medium text-ink">{ctx.email}</span>

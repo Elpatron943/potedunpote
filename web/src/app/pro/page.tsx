@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getClientAccountUser } from "@/lib/client-account";
+import { getOptionalProContext } from "@/lib/pro-auth";
 
 export const metadata: Metadata = {
   title: "Espace professionnel",
@@ -9,8 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default async function ProLandingPage() {
-  const user = await getClientAccountUser();
-  const isArtisan = user?.role === "ARTISAN";
+  const ctx = await getOptionalProContext();
+  const hasVerifiedPro = ctx?.artisanProfile != null;
+  const isLoggedIn = ctx != null;
 
   return (
     <div className="min-h-screen bg-[#0f172a]">
@@ -67,12 +68,28 @@ export default async function ProLandingPage() {
         </ul>
 
         <div className="mt-12 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start">
-          {isArtisan ? (
+          {hasVerifiedPro ? (
             <Link
               href="/pro/tableau"
               className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl bg-teal-500 px-6 py-3 text-center text-base font-bold text-white shadow-lg shadow-teal-950/40 transition hover:bg-teal-400 sm:flex-none dark:bg-teal-600 dark:hover:bg-teal-500"
             >
               Tableau de bord
+            </Link>
+          ) : null}
+          {isLoggedIn && !hasVerifiedPro ? (
+            <Link
+              href="/pro/onboarding"
+              className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl bg-teal-500 px-6 py-3 text-center text-base font-bold text-white shadow-lg shadow-teal-950/40 transition hover:bg-teal-400 sm:flex-none dark:bg-teal-600 dark:hover:bg-teal-500"
+            >
+              Vérifier mon entreprise (Kbis)
+            </Link>
+          ) : null}
+          {isLoggedIn ? (
+            <Link
+              href="/compte"
+              className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl border-2 border-white/25 bg-white/10 px-6 py-3 text-center text-base font-semibold text-white transition hover:bg-white/15 sm:flex-none"
+            >
+              Mon espace membre (avis)
             </Link>
           ) : null}
           <Link
@@ -81,12 +98,14 @@ export default async function ProLandingPage() {
           >
             Voir les forfaits & tarifs
           </Link>
-          <Link
-            href="/pro/connexion"
-            className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl border-2 border-teal-500/50 bg-teal-950/40 px-6 py-3 text-center text-base font-semibold text-teal-100 transition hover:bg-teal-900/60 sm:flex-none"
-          >
-            Connexion Pro
-          </Link>
+          {!isLoggedIn ? (
+            <Link
+              href="/pro/connexion"
+              className="inline-flex min-h-[3rem] flex-1 items-center justify-center rounded-xl border-2 border-teal-500/50 bg-teal-950/40 px-6 py-3 text-center text-base font-semibold text-teal-100 transition hover:bg-teal-900/60 sm:flex-none"
+            >
+              Connexion Pro
+            </Link>
+          ) : null}
         </div>
 
         <p className="mt-10 text-center text-sm text-white/50 lg:text-left">

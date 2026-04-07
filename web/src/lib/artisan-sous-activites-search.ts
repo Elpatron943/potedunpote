@@ -1,7 +1,8 @@
+import { getSirensWithActivePaidSubscription } from "@/lib/pro-subscription-eligibility";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
- * SIRENs des profils Pro (`premiumUntil` futur) ayant déclaré au moins une des
+ * SIRENs des profils Pro (abonnement actif + `premiumUntil` futur) ayant déclaré au moins une des
  * sous-activités pour ce métier dans `sousActivitesSelection`.
  */
 export async function getSirensWithDeclaredSousActivites(
@@ -12,12 +13,15 @@ export async function getSirensWithDeclaredSousActivites(
 
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
-  const { data: rows, error } = await supabase
+  const { data: profs, error: profErr } = await supabase
     .from("ArtisanProfile")
     .select("siren, sousActivitesSelection")
     .gt("premiumUntil", now);
 
-  if (error) throw error;
+  if (profErr) throw profErr;
+  const sirens = [...new Set((profs ?? []).map((r) => r.siren as string).filter((s) => /^\d{9}$/.test(s)))];
+  const paid = await getSirensWithActivePaidSubscription(sirens);
+  const rows = (profs ?? []).filter((r) => paid.has(r.siren as string));
 
   const matches = new Set<string>();
   for (const row of rows ?? []) {

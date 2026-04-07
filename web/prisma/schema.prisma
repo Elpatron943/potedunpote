@@ -195,10 +195,182 @@ model ArtisanProfile {
   servesProfessionnels Boolean @default(false)
   /// Sous-activités cochées par famille métier : { "plomberie": ["robinetterie", ...], ... } (ids stables, voir `BtpPrestation` / seed)
   sousActivitesSelection Json?
+  /// Vitrine web (Pro Vitrine+) : accroche courte.
+  vitrineHeadline String?
+  /// Vitrine web (Pro Vitrine+) : texte de présentation.
+  vitrineBio      String? @db.Text
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   projectPhotos ProjectPhoto[]
+  leads         ProLead[]
+  projects      ProProject[]
+  catalogItems  ProCatalogItem[]
+}
+
+/// Demandes entrantes (Pro Relation+)
+model ProLead {
+  id        String   @id @default(cuid())
+  siren     String
+  artisan   ArtisanProfile @relation(fields: [siren], references: [siren], onDelete: Cascade)
+  status    String   @default("NEW")
+  fullName  String?
+  email     String?
+  phone     String?
+  message   String?  @db.Text
+  source    String   @default("entreprise")
+  /// Référentiel BTP : métier choisi par le demandeur (optionnel).
+  metierId  String?
+  /// Référentiel BTP : prestation choisie (optionnel).
+  prestationId String?
+  /// Dossier « pour devis » : surfaces, photos (liens), urgence, etc. (JSON versionné).
+  requestPayload Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments ProLeadAttachment[]
+  aiDraft     ProLeadAiDraft?
+
+  @@index([siren])
+  @@index([status])
+  @@index([createdAt])
+  @@index([prestationId])
+}
+
+model ProLeadAttachment {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         ProLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  storagePath  String
+  mimeType     String
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([leadId])
+}
+
+/// Brouillon généré (IA ou heuristique) pour aider le pro à chiffrer.
+model ProLeadAiDraft {
+  id             String   @id @default(cuid())
+  leadId         String   @unique
+  lead           ProLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// PENDING | OK | ERROR | STUB
+  status         String   @default("PENDING")
+  model          String?
+  summary        String?  @db.Text
+  missingFields  Json?
+  suggestedLines Json?
+  assumptions    Json?
+  /// Analyse contextualisée : thème, observation (photo ou texte), vigilance, niveau.
+  vigilancePoints Json?
+  confidence     Int?
+  rawResponse    Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([leadId])
+}
+
+/// Pilotage (Pro Pilotage) : chantier / projet interne
+model ProProject {
+  id        String   @id @default(cuid())
+  siren     String
+  artisan   ArtisanProfile @relation(fields: [siren], references: [siren], onDelete: Cascade)
+  title     String
+  clientName String?
+  status    String   @default("OPEN")
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes    ProQuote[]
+  invoices  ProInvoice[]
+  timeEntries ProTimeEntry[]
+  expenses  ProExpense[]
+
+  @@index([siren])
+  @@index([status])
+}
+
+model ProQuote {
+  id        String   @id @default(cuid())
+  projectId String
+  project   ProProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number    String
+  status    String   @default("DRAFT")
+  currency  String   @default("EUR")
+  totalCents Int     @default(0)
+  linesJson Json?
+  issuedAt  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model ProInvoice {
+  id        String   @id @default(cuid())
+  projectId String
+  project   ProProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number    String
+  status    String   @default("DRAFT")
+  currency  String   @default("EUR")
+  totalCents Int     @default(0)
+  linesJson Json?
+  issuedAt  DateTime?
+  paidAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model ProTimeEntry {
+  id        String   @id @default(cuid())
+  projectId String
+  project   ProProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  minutes   Int
+  workDate  DateTime @db.Date
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([workDate])
+}
+
+model ProExpense {
+  id        String   @id @default(cuid())
+  projectId String
+  project   ProProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label     String
+  amountCents Int
+  expenseDate DateTime @db.Date
+  category  String   @default("OTHER")
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([expenseDate])
+}
+
+/// Catalogue devis / factures (Pilotage) : produit, main d'œuvre (ex. TJM si unité « jour »), sous-traitance.
+model ProCatalogItem {
+  id                     String   @id @default(cuid())
+  siren                  String
+  artisan                ArtisanProfile @relation(fields: [siren], references: [siren], onDelete: Cascade)
+  /// PRODUCT | LABOR | SUBCONTRACT
+  kind                   String
+  label                  String
+  description            String?  @db.Text
+  unit                   String   @default("forfait")
+  purchaseUnitPriceCents Int?
+  saleUnitPriceCents     Int?
+  sortOrder              Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([siren])
+  @@index([siren, kind])
 }
 
 model Review {

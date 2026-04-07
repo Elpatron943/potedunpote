@@ -22,8 +22,9 @@ function ConnexionFallback() {
 
 export default async function ConnexionPage() {
   const user = await getClientAccountUser();
-  if (user?.role === "CLIENT") redirect("/compte");
-  if (user?.role === "ARTISAN") redirect("/pro/tableau");
+  if (user?.role === "CLIENT" || user?.role === "ARTISAN" || user?.role === "ADMIN") {
+    redirect("/compte");
+  }
 
   return (
     <div className="min-h-[85vh] bg-[#0f172a]">

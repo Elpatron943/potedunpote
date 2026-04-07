@@ -22,6 +22,8 @@ export function ProProfileForm({
     servesParticuliers: boolean;
     servesProfessionnels: boolean;
     sousActivitesSelection: unknown;
+    vitrineHeadline?: string | null;
+    vitrineBio?: string | null;
   };
   referentiel: SerializedBtpReferentiel;
 }) {
@@ -35,6 +37,8 @@ export function ProProfileForm({
   const [linkedin, setLinkedin] = useState(typeof links.linkedin === "string" ? links.linkedin : "");
   const [servesParticuliers, setServesParticuliers] = useState(Boolean(initialProfile.servesParticuliers));
   const [servesProfessionnels, setServesProfessionnels] = useState(Boolean(initialProfile.servesProfessionnels));
+  const [vitrineHeadline, setVitrineHeadline] = useState((initialProfile.vitrineHeadline ?? "").trim());
+  const [vitrineBio, setVitrineBio] = useState((initialProfile.vitrineBio ?? "").trim());
 
   const initialSel =
     initialProfile.sousActivitesSelection && typeof initialProfile.sousActivitesSelection === "object"
@@ -107,6 +111,35 @@ export function ProProfileForm({
         <div className="rounded-2xl border border-ink/10 bg-canvas/40 p-4 text-xs text-ink-soft dark:border-white/10 dark:bg-canvas-muted/25">
           Le bouton <strong className="text-ink">Contacter</strong> est visible si ton offre Pro est active (champ{" "}
           <code className="font-mono text-[11px] text-ink">premiumUntil</code> dans le futur).
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-ink/10 bg-canvas/40 p-4 dark:border-white/10 dark:bg-canvas-muted/25">
+        <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Vitrine (Pro Vitrine+)</p>
+        <div className="mt-3 grid gap-3">
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-medium text-ink-soft">Accroche</span>
+            <input
+              name="vitrineHeadline"
+              value={vitrineHeadline}
+              onChange={(e) => setVitrineHeadline(e.target.value)}
+              maxLength={120}
+              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+              placeholder="ex. Plomberie / chauffage — interventions rapides et soignées"
+            />
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-medium text-ink-soft">Présentation</span>
+            <textarea
+              name="vitrineBio"
+              value={vitrineBio}
+              onChange={(e) => setVitrineBio(e.target.value)}
+              rows={4}
+              maxLength={4000}
+              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+              placeholder="Décris ton activité, zones, spécialités, garanties…"
+            />
+          </label>
         </div>
       </div>
 

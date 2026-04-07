@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
-import { ARTISAN_SUBSCRIBE_NEXT } from "@/lib/artisan-subscribe-nav";
+import { PRO_PORTAL_POST_LOGIN_NEXT } from "@/lib/artisan-subscribe-nav";
 import { PORTAIL_ACHETEUR_CONNEXION, PORTAIL_PRO_CONNEXION } from "@/lib/auth-portals";
 
 export type ConnexionPortal = "acheteur" | "pro";
@@ -13,7 +13,7 @@ type RegisterStep = "credentials" | "otp";
 export function ConnexionForm({ portal }: { portal: ConnexionPortal }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const defaultNext = portal === "pro" ? ARTISAN_SUBSCRIBE_NEXT : "/compte";
+  const defaultNext = portal === "pro" ? PRO_PORTAL_POST_LOGIN_NEXT : "/compte";
   const nextUrl = searchParams.get("next") ?? defaultNext;
 
   const [mode, setMode] = useState<"login" | "register">("login");

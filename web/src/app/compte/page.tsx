@@ -10,6 +10,7 @@ import {
 import { getEntrepriseDetail } from "@/lib/entreprise-detail";
 import { formatEurFromCents, formatEurPerSquareMeterFromCents } from "@/lib/format-money";
 import { reviewStatusLabel } from "@/lib/review-labels";
+import { getOptionalProContext } from "@/lib/pro-auth";
 import { getReviewsByAuthorId } from "@/lib/reviews-queries";
 
 export const metadata: Metadata = {
@@ -38,9 +39,10 @@ function formatReviewDate(d: Date): string {
 export default async function ComptePage() {
   const user = await requireClientAccountPage();
 
-  const [reviews, btpRef] = await Promise.all([
+  const [reviews, btpRef, proCtx] = await Promise.all([
     getReviewsByAuthorId(user.userId),
     getBtpReferentiel(),
+    getOptionalProContext(),
   ]);
   const ref = serializeBtpReferentiel(btpRef);
 
@@ -88,6 +90,26 @@ export default async function ComptePage() {
               Voir mes avis
             </Link>
           </li>
+          {proCtx && !proCtx.artisanProfile ? (
+            <li>
+              <Link
+                href="/pro/onboarding"
+                className="inline-flex rounded-xl border border-teal-600/30 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-900 transition hover:bg-teal-500/15 dark:border-teal-500/30 dark:text-teal-200 dark:hover:bg-teal-500/10"
+              >
+                Espace pro — vérification Kbis
+              </Link>
+            </li>
+          ) : null}
+          {proCtx?.artisanProfile ? (
+            <li>
+              <Link
+                href="/pro/tableau"
+                className="inline-flex rounded-xl border border-teal-600/30 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-900 transition hover:bg-teal-500/15 dark:border-teal-500/30 dark:text-teal-200 dark:hover:bg-teal-500/10"
+              >
+                Espace professionnel
+              </Link>
+            </li>
+          ) : null}
         </ul>
       </section>
 

@@ -33,10 +33,9 @@ async function loadClientAccountUser(): Promise<ClientAccountUser | null> {
 /** Une seule requête utilisateur par rendu (layout + page). */
 export const getClientAccountUser = cache(loadClientAccountUser);
 
-/** Page `/compte` : session obligatoire, les comptes artisan sont renvoyés vers l’espace Pro. */
+/** Page `/compte` : session obligatoire. Un même compte peut être acheteur (avis) et pro vérifié (Kbis) : l’espace Pro reste sur `/pro`. */
 export async function requireClientAccountPage(): Promise<ClientAccountUser> {
   const u = await getClientAccountUser();
   if (!u) redirect("/connexion?next=/compte");
-  if (u.role === "ARTISAN") redirect("/pro/tableau");
   return u;
 }

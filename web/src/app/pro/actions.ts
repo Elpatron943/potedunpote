@@ -63,9 +63,6 @@ async function recordKbisRejection(params: {
  */
 export async function proOnboardingAction(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
   const ctx = await requireProContext();
-  if (ctx.role !== "ARTISAN" && ctx.role !== "ADMIN") {
-    return { ok: false, error: "Accès refusé." };
-  }
   if (ctx.artisanProfile) {
     redirect("/pro/tableau");
   }
@@ -274,14 +271,35 @@ export async function proOnboardingAction(_prev: { ok: boolean; error?: string }
     }
   }
 
+  if (ctx.role === "CLIENT") {
+    const { error: roleErr } = await supabase
+      .from("User")
+      .update({ role: "ARTISAN", updatedAt: now })
+      .eq("id", ctx.userId);
+    if (roleErr) {
+      console.error("[pro onboarding] User role update", roleErr);
+    }
+  }
+
   revalidatePath("/pro");
   revalidatePath("/pro/tableau");
+  revalidatePath("/compte");
   redirect("/pro/tableau");
 }
 
 export async function proSaveProfileAction(_prev: { ok: boolean; error?: string } | null, formData: FormData) {
   const ctx = await requireProContext();
   if (!ctx.artisanProfile) redirect("/pro/onboarding");
+
+  const planId = ctx.subscription.planId;
+  const canEditVitrine = ctx.subscription.isActive && planId != null && (planId === "vitrine" || planId === "pilotage");
+
+  const vitrineHeadlineRaw = String(formData.get("vitrineHeadline") ?? "").trim();
+  const vitrineBioRaw = String(formData.get("vitrineBio") ?? "").trim();
+  const vitrineHeadline =
+    canEditVitrine && vitrineHeadlineRaw.length > 0 ? vitrineHeadlineRaw.slice(0, 120) : null;
+  const vitrineBio =
+    canEditVitrine && vitrineBioRaw.length > 0 ? vitrineBioRaw.slice(0, 4000) : null;
 
   const phone = String(formData.get("phonePublic") ?? "").trim();
   const phonePublic = phone.length > 0 ? phone.slice(0, 30) : null;
@@ -315,6 +333,8 @@ export async function proSaveProfileAction(_prev: { ok: boolean; error?: string 
   const { error } = await supabase
     .from("ArtisanProfile")
     .update({
+      vitrineHeadline,
+      vitrineBio,
       phonePublic,
       contactLinks: hasLinks ? contactLinks : null,
       servesParticuliers,

@@ -27,3 +27,26 @@ export function parseOptionalAmountEurosToCents(raw: unknown): ParseAmountResult
 
   return { ok: true, cents };
 }
+
+/** Vide → null. Sinon montant en euros ≥ 0 (virgule ou point) → centimes. */
+export function parseOptionalEurosToCentsNonNegative(raw: unknown): ParseAmountResult {
+  if (raw == null) return { ok: true, cents: null };
+  const s = String(raw).trim();
+  if (s === "") return { ok: true, cents: null };
+
+  const normalized = s.replace(/\s/g, "").replace(",", ".");
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) {
+    return { ok: false, error: "Montant invalide." };
+  }
+  if (n < 0) {
+    return { ok: false, error: "Le montant ne peut pas être négatif." };
+  }
+
+  const cents = Math.round(n * 100);
+  if (!Number.isSafeInteger(cents) || cents > MAX_CENTS) {
+    return { ok: false, error: "Montant trop élevé ou non pris en charge." };
+  }
+
+  return { ok: true, cents };
+}

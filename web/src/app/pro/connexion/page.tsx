@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { ConnexionForm } from "@/components/connexion-form";
 import { PORTAIL_ACHETEUR_CONNEXION } from "@/lib/auth-portals";
+import { getOptionalProContext } from "@/lib/pro-auth";
 
 export const metadata: Metadata = {
   title: "Connexion artisan",
@@ -20,7 +22,12 @@ function ConnexionFallback() {
   );
 }
 
-export default function ProConnexionPage() {
+export default async function ProConnexionPage() {
+  const ctx = await getOptionalProContext();
+  if (ctx?.artisanProfile) {
+    redirect("/pro/tableau");
+  }
+
   return (
     <div className="min-h-[70vh] bg-canvas px-4 py-12 sm:px-6">
       <p className="mx-auto max-w-lg text-center text-sm text-ink-soft">
@@ -40,9 +47,11 @@ export default function ProConnexionPage() {
           Connexion Pro
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Compte artisan pour accéder aux offres Pro, booster ta fiche et suivre ta visibilité. L’inscription
-          exige une <strong className="font-medium text-ink">vérification par code e-mail</strong> (même
-          principe que pour les particuliers).
+          Compte <strong className="font-medium text-ink">membre</strong> (comme pour les avis) : le statut{" "}
+          <strong className="font-medium text-ink">pro vérifié</strong> n’est obtenu qu’après dépôt et
+          validation d’un <strong className="font-medium text-ink">Kbis</strong> depuis l’onboarding. Tu peux
+          t’inscrire ici ou te connecter avec un compte déjà créé côté particuliers. L’inscription envoie un{" "}
+          <strong className="font-medium text-ink">code par e-mail</strong>.
         </p>
         <p className="mt-3 text-sm text-ink-soft">
           Tu veux seulement laisser un avis en tant que particulier ?{" "}

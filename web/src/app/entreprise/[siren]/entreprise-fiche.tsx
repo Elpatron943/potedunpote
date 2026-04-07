@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ContactProButton } from "@/components/contact-pro-button";
+import { RequestProLeadButton } from "@/components/request-pro-lead-button";
 import type { PremiumContactInfo } from "@/lib/artisan-premium-contact";
 import type { ReviewStatus } from "@/lib/db-enums";
 import { ReviewForm } from "@/components/review-form";
@@ -32,6 +33,8 @@ import { authorDisplayName } from "@/lib/reviews-queries";
 import type { PublishedPriceStats } from "@/lib/reviews-price-stats";
 import { formatRgeDomaineCode } from "@/lib/rge-domaines";
 import { formatTrancheEffectif } from "@/lib/tranche-effectif";
+import type { PublicProPlan } from "@/lib/pro-plan-public";
+import { hasPlanAtLeast } from "@/lib/pro-plan";
 
 function formatDateFr(iso: string | null): string {
   if (!iso) return "—";
@@ -90,6 +93,7 @@ export function EntrepriseFiche({
   priceStats,
   btpReferentiel,
   premiumContact,
+  proPlan,
 }: {
   detail: EntrepriseDetail;
   publishedReviews: PublicReviewPayload[];
@@ -98,6 +102,7 @@ export function EntrepriseFiche({
   priceStats: PublishedPriceStats | null;
   btpReferentiel: SerializedBtpReferentiel;
   premiumContact: PremiumContactInfo | null;
+  proPlan: PublicProPlan | null;
 }) {
   const complementEntries = Object.entries(detail.complements).sort(([a], [b]) =>
     a.localeCompare(b, "fr"),
@@ -122,7 +127,20 @@ export function EntrepriseFiche({
               Pro — contact activé
             </span>
             <ContactProButton raisonSociale={detail.nom} contact={premiumContact} />
+            {proPlan?.active && hasPlanAtLeast(proPlan.planId, "relation") ? (
+              <RequestProLeadButton siren={detail.siren} raisonSociale={detail.nom} />
+            ) : null}
           </div>
+        ) : null}
+        {proPlan?.active && hasPlanAtLeast(proPlan.planId, "vitrine") ? (
+          <p className="mt-4">
+            <Link
+              href={`/vitrine/${detail.siren}`}
+              className="inline-flex items-center rounded-full border border-teal-500/40 bg-teal-500/10 px-4 py-2 text-sm font-semibold text-teal-900 hover:bg-teal-500/20 dark:text-teal-200 dark:hover:bg-teal-500/15"
+            >
+              Voir la vitrine
+            </Link>
+          </p>
         ) : null}
       </header>
 

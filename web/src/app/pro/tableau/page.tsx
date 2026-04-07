@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireProContext } from "@/lib/pro-auth";
+import { hasPlanAtLeast, type ProPlanId } from "@/lib/pro-plan";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function ProTableauPage() {
@@ -17,7 +18,14 @@ export default async function ProTableauPage() {
     .eq("userId", ctx.userId)
     .maybeSingle();
 
-  const planId = (sub?.planId as string | undefined) ?? "—";
+  const planIdRaw = (sub?.planId as string | undefined) ?? null;
+  const planId =
+    planIdRaw === "essentiel" ||
+    planIdRaw === "relation" ||
+    planIdRaw === "vitrine" ||
+    planIdRaw === "pilotage"
+      ? (planIdRaw as ProPlanId)
+      : null;
   const status = (sub?.status as string | undefined) ?? "INACTIVE";
   const until = (sub?.currentPeriodEnd as string | null | undefined) ?? null;
 
@@ -52,7 +60,7 @@ export default async function ProTableauPage() {
           <h2 className="text-lg font-semibold text-ink">Offre & options</h2>
           <p className="mt-2 text-sm text-ink-soft">
             Statut : <span className="font-medium text-ink">{status}</span> · Plan :{" "}
-            <span className="font-medium text-ink">{planId}</span>
+            <span className="font-medium text-ink">{planId ?? "—"}</span>
             {until ? (
               <>
                 {" "}
@@ -74,6 +82,38 @@ export default async function ProTableauPage() {
             >
               Compléter mon profil (contact, prestations…)
             </Link>
+            {planId && hasPlanAtLeast(planId, "relation") ? (
+              <Link
+                href="/pro/demandes"
+                className="inline-flex min-h-[2.75rem] items-center justify-center rounded-xl border border-ink/15 bg-canvas-muted/40 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-muted/60 dark:border-white/15 dark:bg-white/5"
+              >
+                Demandes entrantes
+              </Link>
+            ) : null}
+            {planId && hasPlanAtLeast(planId, "vitrine") ? (
+              <Link
+                href="/pro/vitrine"
+                className="inline-flex min-h-[2.75rem] items-center justify-center rounded-xl border border-ink/15 bg-canvas-muted/40 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-muted/60 dark:border-white/15 dark:bg-white/5"
+              >
+                Vitrine & photos
+              </Link>
+            ) : null}
+            {planId && hasPlanAtLeast(planId, "pilotage") ? (
+              <>
+                <Link
+                  href="/pro/chantiers"
+                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-xl border border-ink/15 bg-canvas-muted/40 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-muted/60 dark:border-white/15 dark:bg-white/5"
+                >
+                  Pilotage chantiers
+                </Link>
+                <Link
+                  href="/pro/catalog"
+                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-xl border border-ink/15 bg-canvas-muted/40 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-muted/60 dark:border-white/15 dark:bg-white/5"
+                >
+                  Catalogue devis
+                </Link>
+              </>
+            ) : null}
           </div>
         </section>
 

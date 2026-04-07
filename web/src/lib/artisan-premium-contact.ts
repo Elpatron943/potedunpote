@@ -1,3 +1,4 @@
+import { getSirensWithActivePaidSubscription } from "@/lib/pro-subscription-eligibility";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type PremiumContactLinks = {
@@ -33,7 +34,7 @@ function normalizeLinks(raw: unknown): PremiumContactLinks | null {
 }
 
 /**
- * Profils avec `premiumUntil` dans le futur (abonnement actif), pour affichage du bouton Contacter.
+ * Coordonnées « Contacter » : abonnement Pro actif (ProSubscription) + fenêtre premiumUntil.
  */
 export async function getPremiumContactsBySirens(
   sirens: string[],
@@ -41,12 +42,16 @@ export async function getPremiumContactsBySirens(
   const unique = [...new Set(sirens.filter((s) => /^\d{9}$/.test(s)))];
   if (unique.length === 0) return new Map();
 
+  const paid = await getSirensWithActivePaidSubscription(unique);
+  const eligible = unique.filter((s) => paid.has(s));
+  if (eligible.length === 0) return new Map();
+
   const now = new Date().toISOString();
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("ArtisanProfile")
     .select("siren, phonePublic, contactLinks, premiumUntil")
-    .in("siren", unique)
+    .in("siren", eligible)
     .gt("premiumUntil", now);
 
   if (error) throw error;

@@ -241,8 +241,8 @@ export function RequestProLeadDialog({ siren, raisonSociale, viewerEmail, open, 
         </h2>
         <p className="mt-2 text-sm text-ink-soft">
           Plus le dossier est complet (photos, surfaces, périmètre), plus le professionnel peut préparer un devis. Les
-          photos que tu ajoutes ici ne sont pas enregistrées sur nos serveurs : elles sont transmises une seule fois pour
-          l’analyse IA (synthèse et points de vigilance), puis oubliées. Tu peux aussi coller des liens (Drive, etc.)
+          photos que tu ajoutes sont enregistrées de façon sécurisée pour que le pro puisse les consulter dans son espace,
+          et servent aussi à l’analyse IA (synthèse et points de vigilance). Tu peux aussi coller des liens (Drive, etc.)
           dans le questionnaire lorsque c’est proposé.
         </p>
 
@@ -354,11 +354,11 @@ export function RequestProLeadDialog({ siren, raisonSociale, viewerEmail, open, 
 
               <div className="mt-3 rounded-lg border border-ink/10 bg-[var(--card)]/80 p-3 dark:border-white/10">
                 <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
-                  Photos pour l’IA (jusqu’à {QUOTE_VISION_MAX_FILES}, max {QUOTE_VISION_MAX_BYTES / (1024 * 1024)} Mo — non
-                  stockées)
+                  Photos (jusqu’à {QUOTE_VISION_MAX_FILES}, max {QUOTE_VISION_MAX_BYTES / (1024 * 1024)} Mo)
                 </p>
                 <p className="mt-1 text-[11px] leading-snug text-ink-soft">
-                  Elles partiront avec ton envoi et serviront uniquement au brouillon d’analyse côté pro.
+                  Envoyées avec ta demande : le professionnel pourra les voir dans son dossier ; elles sont aussi utilisées
+                  pour le brouillon d’analyse IA.
                 </p>
                 {uploadErr ? <p className="mt-1 text-xs text-red-700 dark:text-red-300">{uploadErr}</p> : null}
                 <input
@@ -441,10 +441,10 @@ export function RequestProLeadDialog({ siren, raisonSociale, viewerEmail, open, 
                     className="mt-1 h-4 w-4 shrink-0 rounded border-ink/20 text-teal-700"
                   />
                   <span className="text-xs leading-relaxed text-ink">
-                    J’accepte qu’une analyse automatisée (IA) soit réalisée sur les informations et sur les images que
-                    j’envoie (celles-ci ne sont pas conservées sur la plateforme après analyse), uniquement pour produire
-                    un brouillon d’aide au devis côté professionnel. Aucun prix définitif n’est imposé ; le pro valide
-                    toujours le devis.
+                    J’accepte que les photos que j’envoie soient conservées pour le professionnel dans le cadre de ma
+                    demande, et qu’une analyse automatisée (IA) soit réalisée sur les informations et les images,
+                    uniquement pour produire un brouillon d’aide au devis côté professionnel. Aucun prix définitif n’est
+                    imposé ; le pro valide toujours le devis.
                   </span>
                 </label>
               ) : null}

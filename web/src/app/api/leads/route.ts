@@ -14,8 +14,12 @@ import {
   sanitizeQuoteRequestPayload,
   validateQuoteRequestFields,
 } from "@/lib/quote-request";
-import { finalizeQuoteLeadSession, isValidQuoteSessionId } from "@/lib/quote-lead-files";
-import { parseQuoteVisionImagesFromFormData } from "@/lib/quote-vision-inline";
+import {
+  finalizeQuoteLeadSession,
+  isValidQuoteSessionId,
+  uploadQuoteImagesToLeadFolder,
+} from "@/lib/quote-lead-files";
+import { extractQuoteVisionFilesFromFormData } from "@/lib/quote-vision-inline";
 import { getSession } from "@/lib/auth-session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -112,11 +116,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Session d’upload invalide." }, { status: 400 });
   }
 
-  const visionParsed = await parseQuoteVisionImagesFromFormData(fd);
-  if (!visionParsed.ok) {
-    return NextResponse.json({ ok: false, error: visionParsed.error }, { status: 400 });
+  const visionExtract = extractQuoteVisionFilesFromFormData(fd);
+  if (!visionExtract.ok) {
+    return NextResponse.json({ ok: false, error: visionExtract.error }, { status: 400 });
   }
-  const inlineVisionImages = visionParsed.images;
+  const visionFiles = visionExtract.files;
 
   const supabase = getSupabaseAdmin();
   const session = await getSession();
@@ -164,11 +168,26 @@ export async function POST(req: Request) {
     );
   }
 
-  let attachmentCount = inlineVisionImages.length;
+  let attachmentCount = 0;
   let attachmentStoragePaths: string[] = [];
-  /** Stockage Storage uniquement si aucune photo inline (rétrocompat / autres clients). */
-  if (inlineVisionImages.length === 0 && uploadSessionId) {
-    try {
+  try {
+    if (visionFiles.length > 0) {
+      const uploaded = await uploadQuoteImagesToLeadFolder(leadId, visionFiles);
+      attachmentCount = uploaded.length;
+      attachmentStoragePaths = uploaded.map((f) => f.storagePath);
+      for (let i = 0; i < uploaded.length; i++) {
+        const a = uploaded[i];
+        const { error: aErr } = await supabase.from("ProLeadAttachment").insert({
+          id: a.id,
+          leadId,
+          storagePath: a.storagePath,
+          mimeType: a.mimeType,
+          sortOrder: i,
+          createdAt: now,
+        });
+        if (aErr) console.error("[leads] attachment insert", aErr);
+      }
+    } else if (uploadSessionId) {
       const finalized = await finalizeQuoteLeadSession(uploadSessionId, leadId);
       attachmentCount = finalized.length;
       attachmentStoragePaths = finalized.map((f) => f.storagePath);
@@ -184,9 +203,9 @@ export async function POST(req: Request) {
         });
         if (aErr) console.error("[leads] attachment insert", aErr);
       }
-    } catch (e) {
-      console.error("[leads] finalize session", e);
     }
+  } catch (e) {
+    console.error("[leads] photos storage", e);
   }
 
   const metierLabel = metierId ? getBtpMetierLabelFromRef(ref, metierId) : null;
@@ -248,7 +267,6 @@ export async function POST(req: Request) {
           requestPayload,
           attachmentCount,
           attachmentStoragePaths,
-          inlineVisionImages: inlineVisionImages.length > 0 ? inlineVisionImages : undefined,
         });
         await persistProLeadAiDraft(leadId, run);
       } catch (e) {

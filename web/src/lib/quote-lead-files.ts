@@ -133,3 +133,40 @@ export function parseLeadIdFromStoragePath(path: string): string | null {
   const m = path.match(new RegExp(`^${QUOTE_LEADS_ROOT}/leads/([^/]+)/`));
   return m?.[1] ?? null;
 }
+
+/** Envoie les photos du formulaire directement sous `quote-leads/leads/{leadId}/` (pièces jointes pro + IA). */
+export async function uploadQuoteImagesToLeadFolder(
+  leadId: string,
+  files: File[],
+): Promise<FinalizedAttachment[]> {
+  const bucket = quoteLeadsBucket();
+  const supabase = getSupabaseAdmin();
+  const prefix = quoteLeadPrefix(leadId);
+  const out: FinalizedAttachment[] = [];
+  for (const file of files.slice(0, MAX_FILES_PER_SESSION)) {
+    if (file.size > MAX_BYTES) {
+      throw new Error("Fichier trop volumineux (max 4 Mo).");
+    }
+    const mime = file.type || mimeFromFilename(file.name);
+    if (!mime.startsWith("image/")) {
+      throw new Error("Format non pris en charge (images uniquement).");
+    }
+    const ext = (() => {
+      const m = mime.toLowerCase();
+      if (m.includes("png")) return "png";
+      if (m.includes("webp")) return "webp";
+      return "jpg";
+    })();
+    const id = createId();
+    const name = `${id}.${ext}`;
+    const path = `${prefix}/${name}`;
+    const buf = Buffer.from(await file.arrayBuffer());
+    const { error } = await supabase.storage.from(bucket).upload(path, buf, {
+      contentType: mime,
+      upsert: false,
+    });
+    if (error) throw new Error(quoteLeadStorageUserMessage(error, bucket));
+    out.push({ id, storagePath: path, mimeType: mime });
+  }
+  return out;
+}

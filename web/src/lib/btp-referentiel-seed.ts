@@ -2,7 +2,9 @@
  * Copie de secours du référentiel BTP (alignée sur la migration SQL Supabase).
  * Utilisée si la base est vide ou injoignable.
  */
-import type { BtpMetier, SousActivite } from "./btp-referentiel-types";
+import type { BtpMetier } from "./btp-referentiel-types";
+
+type SeedSousActiviteRow = { id: string; label: string };
 
 export const SEED_BTP_METIERS: BtpMetier[] = [
   { id: "plomberie", label: "Plomberie & chauffage", codeNaf: "43.22A,43.22B" },
@@ -17,7 +19,7 @@ export const SEED_BTP_METIERS: BtpMetier[] = [
   { id: "autres-btp", label: "Autres travaux spécialisés BTP", codeNaf: "43.99C" },
 ];
 
-export const SEED_BTP_SOUS_ACTIVITES: Record<string, SousActivite[]> = {
+export const SEED_BTP_SOUS_ACTIVITES: Record<string, SeedSousActiviteRow[]> = {
   plomberie: [
     { id: "sd-bain-complete", label: "Salle de bain complète (création / rénovation)" },
     { id: "douche-baignoire", label: "Douche, baignoire, receveur, paroi" },
@@ -116,46 +118,3 @@ export const SEED_BTP_SOUS_ACTIVITES: Record<string, SousActivite[]> = {
     { id: "autre-sur-devis", label: "Autre — précisé au devis" },
   ],
 };
-
-/** Aligné sur la colonne pricedBySurface en base. */
-export const SEED_SURFACE_PRICED_ACTIVITE_IDS: string[] = [
-  "sd-bain-complete",
-  "plan-chauffage-pac",
-  "extension-gros-oeuvre",
-  "murs-clotures",
-  "dalle-chape",
-  "terrasse-exterieure",
-  "enduits-facade",
-  "fenetres-pvc-bois-alu",
-  "parquet-stratifie",
-  "placards-dressing",
-  "peinture-interieure",
-  "peinture-facade",
-  "vitrerie-simple",
-  "papier-peint-toile",
-  "preparation-supports",
-  "laques-batiments",
-  "carrelage-sdb",
-  "carrelage-cuisine",
-  "carrelage-sol-sejour",
-  "carrelage-exterieur",
-  "mosaique-faience",
-  "chape-ragreage",
-  "joints-hydrofuge",
-  "cloisons-ba13",
-  "doublages-isolation",
-  "faux-plafonds",
-  "enduits-lisses",
-  "trous-ouvertures",
-  "corniches-decor",
-  "tuiles-ardoises",
-  "etancheite-toiture",
-  "isolation-combles",
-  "demoussage-hydrofuge",
-  "demolition-maison",
-  "demolition-interieure",
-  "terrassement-tranchee",
-  "etancheite-sou-sol",
-  "isolation-acoustique",
-  "nettoyage-haute-pression",
-];

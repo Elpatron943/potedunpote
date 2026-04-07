@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   getBtpMetierFromRef,
   getBtpReferentiel,
-  isPrestationPricedBySurface,
+  getPrestationPriceUnit,
   isValidPrestationPair,
 } from "@/lib/btp-referentiel";
 import type {
@@ -17,6 +17,9 @@ import type {
 } from "@/lib/db-enums";
 import { getSession } from "@/lib/auth-session";
 import { parseOptionalAmountEurosToCents } from "@/lib/parse-amount-euros";
+import type { BtpPriceUnit } from "@/lib/btp-price-unit";
+import { btpPriceUnitRequiresQuantity } from "@/lib/btp-price-unit";
+import { parseOptionalPositiveQuantity } from "@/lib/parse-optional-quantity";
 import { parseOptionalSurfaceM2 } from "@/lib/parse-surface-m2";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -175,22 +178,81 @@ export async function submitReview(
   }
   const amountPaidCents = amountParsed.cents;
 
-  const surfaceParsed = parseOptionalSurfaceM2(formData.get("surfaceM2"));
-  if (!surfaceParsed.ok) {
-    return { ok: false, error: surfaceParsed.error };
-  }
-  let surfaceM2: number | null = surfaceParsed.m2;
-  if (surfaceM2 != null) {
-    if (prestationMetierId == null || prestationActiviteId == null) {
+  let surfaceM2: number | null = null;
+  let linearMl: number | null = null;
+  let volumeM3: number | null = null;
+  let quantityUnits: number | null = null;
+  let reviewPriceUnit: BtpPriceUnit | null = null;
+
+  if (prestationMetierId != null && prestationActiviteId != null) {
+    const pu = getPrestationPriceUnit(btpRef, prestationMetierId, prestationActiviteId);
+    reviewPriceUnit = pu ?? null;
+
+    const sM2 = parseOptionalSurfaceM2(formData.get("surfaceM2"));
+    if (!sM2.ok) return { ok: false, error: sM2.error };
+    const sMl = parseOptionalPositiveQuantity(formData.get("linearMl"), "Mètre linéaire");
+    if (!sMl.ok) return { ok: false, error: sMl.error };
+    const sM3 = parseOptionalPositiveQuantity(formData.get("volumeM3"), "Volume (m³)");
+    if (!sM3.ok) return { ok: false, error: sM3.error };
+    const sU = parseOptionalPositiveQuantity(formData.get("quantityUnits"), "Quantité");
+    if (!sU.ok) return { ok: false, error: sU.error };
+
+    const filled = [
+      sM2.m2 != null,
+      sMl.value != null,
+      sM3.value != null,
+      sU.value != null,
+    ].filter(Boolean).length;
+    if (filled > 1) {
       return {
         ok: false,
-        error: "Pour indiquer une surface, choisis d’abord une prestation (métier + type).",
+        error: "Renseigne une seule mesure (surface, ml, m³ ou quantité) correspondant à la spécialité.",
       };
     }
-    if (!isPrestationPricedBySurface(btpRef, prestationMetierId, prestationActiviteId)) {
+
+    if (pu == null || !btpPriceUnitRequiresQuantity(pu)) {
+      if (filled > 0) {
+        return {
+          ok: false,
+          error:
+            pu == null
+              ? "Spécialité inconnue : retire la surface ou la quantité, ou choisis une autre ligne."
+              : "Cette spécialité est au forfait : ne renseigne pas de surface ni de quantité.",
+        };
+      }
+    } else {
+      const need =
+        pu === "M2"
+          ? sM2.m2
+          : pu === "ML"
+            ? sMl.value
+            : pu === "M3"
+              ? sM3.value
+              : sU.value;
+      if (need == null && filled > 0) {
+        return {
+          ok: false,
+          error: "La mesure saisie ne correspond pas à l’unité de prix de cette spécialité.",
+        };
+      }
+      if (pu === "M2") surfaceM2 = sM2.m2 ?? null;
+      else if (pu === "ML") linearMl = sMl.value ?? null;
+      else if (pu === "M3") volumeM3 = sM3.value ?? null;
+      else if (pu === "UNIT") quantityUnits = sU.value ?? null;
+    }
+  } else {
+    const sM2 = parseOptionalSurfaceM2(formData.get("surfaceM2"));
+    if (!sM2.ok) return { ok: false, error: sM2.error };
+    const sMl = parseOptionalPositiveQuantity(formData.get("linearMl"), "Mètre linéaire");
+    if (!sMl.ok) return { ok: false, error: sMl.error };
+    const sM3 = parseOptionalPositiveQuantity(formData.get("volumeM3"), "Volume (m³)");
+    if (!sM3.ok) return { ok: false, error: sM3.error };
+    const sU = parseOptionalPositiveQuantity(formData.get("quantityUnits"), "Quantité");
+    if (!sU.ok) return { ok: false, error: sU.error };
+    if (sM2.m2 != null || sMl.value != null || sM3.value != null || sU.value != null) {
       return {
         ok: false,
-        error: "Cette prestation n’est pas proposée au prix au m² : retire la surface ou change de prestation.",
+        error: "Pour indiquer une surface ou une quantité, choisis d’abord un métier et une spécialité.",
       };
     }
   }
@@ -234,6 +296,10 @@ export async function submitReview(
     specialiteId: prestationActiviteId ?? null,
     amountPaidCents: amountPaidCents ?? null,
     surfaceM2: surfaceM2 ?? null,
+    linearMl: linearMl ?? null,
+    volumeM3: volumeM3 ?? null,
+    quantityUnits: quantityUnits ?? null,
+    priceUnit: reviewPriceUnit,
     durationMinutes,
     pricePrestationOnly,
     status: "PUBLISHED",
@@ -252,7 +318,7 @@ export async function submitReview(
       return {
         ok: false,
         error:
-          "Sauvegarde impossible : la table Review en base n’a pas toutes les colonnes attendues. Dans Supabase → SQL, exécute le fichier prisma/migrations/20260406120000_review_columns_if_missing/migration.sql (ou lance prisma migrate deploy).",
+          "Sauvegarde impossible : la table Review en base n’a pas toutes les colonnes attendues. Dans Supabase → SQL, exécute les migrations prisma (ex. 20260407120000_btp_prestation_price_unit/migration.sql) ou prisma migrate deploy.",
       };
     }
     throw error;

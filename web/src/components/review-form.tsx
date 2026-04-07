@@ -5,10 +5,20 @@ import type { SubmitReviewState } from "@/actions/review";
 import { submitReview } from "@/actions/review";
 import type { SerializedBtpReferentiel } from "@/lib/btp-referentiel-types";
 import {
+  getPrestationPriceUnit,
   getSousActivitesForMetier,
-  isPrestationPricedBySurface,
 } from "@/lib/btp-referentiel";
-import { formatEurPerSquareMeterFromCents } from "@/lib/format-money";
+import {
+  btpPriceUnitQuantityHint,
+  btpPriceUnitRequiresQuantity,
+  btpPriceUnitShortLabel,
+} from "@/lib/btp-price-unit";
+import {
+  formatEurPerCountableUnitFromCents,
+  formatEurPerCubicMeterFromCents,
+  formatEurPerLinearMeterFromCents,
+  formatEurPerSquareMeterFromCents,
+} from "@/lib/format-money";
 
 const initial: SubmitReviewState = { ok: null };
 
@@ -43,25 +53,54 @@ export function ReviewForm({
   const [specialiteId, setSpecialiteId] = useState("");
   const [amountPaidEuros, setAmountPaidEuros] = useState("");
   const [surfaceM2Input, setSurfaceM2Input] = useState("");
+  const [linearMlInput, setLinearMlInput] = useState("");
+  const [volumeM3Input, setVolumeM3Input] = useState("");
+  const [quantityUnitsInput, setQuantityUnitsInput] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("");
 
   const sousActivites = getSousActivitesForMetier(referentiel, metierId);
-  const surfacePrestation =
-    metierId !== "" &&
-    specialiteId !== "" &&
-    isPrestationPricedBySurface(referentiel, metierId, specialiteId);
+  const priceUnit =
+    metierId !== "" && specialiteId !== ""
+      ? getPrestationPriceUnit(referentiel, metierId, specialiteId)
+      : null;
+  const showQuantity =
+    priceUnit != null && btpPriceUnitRequiresQuantity(priceUnit);
 
   useEffect(() => {
     setSpecialiteId("");
   }, [metierId]);
 
-  const previewPerM2 = useMemo(() => {
-    if (!surfacePrestation) return null;
+  const previewPerDenom = useMemo(() => {
+    if (!showQuantity || priceUnit == null) return null;
     const cents = parsePreviewEurosToCents(amountPaidEuros);
-    const m2 = parsePreviewSurfaceM2(surfaceM2Input);
-    if (cents == null || m2 == null) return null;
-    return formatEurPerSquareMeterFromCents(cents, m2);
-  }, [surfacePrestation, amountPaidEuros, surfaceM2Input]);
+    if (cents == null) return null;
+    if (priceUnit === "M2") {
+      const m2 = parsePreviewSurfaceM2(surfaceM2Input);
+      if (m2 == null) return null;
+      return formatEurPerSquareMeterFromCents(cents, m2);
+    }
+    if (priceUnit === "ML") {
+      const ml = parsePreviewSurfaceM2(linearMlInput);
+      if (ml == null) return null;
+      return formatEurPerLinearMeterFromCents(cents, ml);
+    }
+    if (priceUnit === "M3") {
+      const m3 = parsePreviewSurfaceM2(volumeM3Input);
+      if (m3 == null) return null;
+      return formatEurPerCubicMeterFromCents(cents, m3);
+    }
+    const u = parsePreviewSurfaceM2(quantityUnitsInput);
+    if (u == null) return null;
+    return formatEurPerCountableUnitFromCents(cents, u);
+  }, [
+    showQuantity,
+    priceUnit,
+    amountPaidEuros,
+    surfaceM2Input,
+    linearMlInput,
+    volumeM3Input,
+    quantityUnitsInput,
+  ]);
 
   return (
     <form action={formAction} className="space-y-5">
@@ -150,8 +189,9 @@ export function ReviewForm({
           Prestation réalisée <span className="font-normal normal-case text-ink-soft/80">(optionnel)</span>
         </p>
         <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-          Aide les visiteurs à comparer les prix pour une intervention comparable. Pour les travaux au m²,
-          indique la surface : le prix au m² est calculé automatiquement.
+          Aide les visiteurs à comparer les prix pour une intervention comparable. Selon la spécialité, tu
+          peux indiquer une surface (m²), un linéaire (ml), un volume (m³), une quantité (unités) ou laisser
+          vide pour un forfait — le prix par unité adaptée est calculé automatiquement quand c’est pertinent.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-2">
@@ -184,12 +224,21 @@ export function ReviewForm({
               </option>
               {sousActivites.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.label}
+                  {a.label} ({btpPriceUnitShortLabel(a.priceUnit)})
                 </option>
               ))}
             </select>
           </label>
         </div>
+        {priceUnit != null ? (
+          <p className="mt-2 text-xs text-ink-soft">
+            Unité de comparaison des prix pour cette spécialité :{" "}
+            <strong className="text-ink">{btpPriceUnitShortLabel(priceUnit)}</strong>
+            {priceUnit === "FORFAIT"
+              ? " — indique uniquement le montant total si tu veux."
+              : null}
+          </p>
+        ) : null}
         <label className="mt-3 flex flex-col gap-2">
           <span className="text-xs font-medium text-ink-soft">
             Durée de la prestation (minutes) <span className="font-normal text-ink-soft/75">optionnel</span>
@@ -241,10 +290,11 @@ export function ReviewForm({
           </span>
         </label>
 
-        {surfacePrestation ? (
+        {showQuantity && priceUnit === "M2" ? (
           <label className="mt-3 flex flex-col gap-2">
             <span className="text-xs font-medium text-ink-soft">
-              Surface concernée (m²) <span className="font-normal text-ink-soft/75">optionnel</span>
+              {btpPriceUnitQuantityHint("M2")}{" "}
+              <span className="font-normal text-ink-soft/75">optionnel</span>
             </span>
             <input
               name="surfaceM2"
@@ -256,13 +306,94 @@ export function ReviewForm({
               onChange={(e) => setSurfaceM2Input(e.target.value)}
               className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
             />
-            {previewPerM2 ? (
+            {previewPerDenom ? (
               <p className="text-sm font-semibold tabular-nums text-teal-800 dark:text-teal-200">
-                Prix calculé : {previewPerM2} / m²
+                Prix calculé : {previewPerDenom}
               </p>
             ) : (
               <span className="text-xs text-ink-soft">
                 Renseigne le montant payé et la surface pour afficher le prix au m².
+              </span>
+            )}
+          </label>
+        ) : null}
+        {showQuantity && priceUnit === "ML" ? (
+          <label className="mt-3 flex flex-col gap-2">
+            <span className="text-xs font-medium text-ink-soft">
+              {btpPriceUnitQuantityHint("ML")}{" "}
+              <span className="font-normal text-ink-soft/75">optionnel</span>
+            </span>
+            <input
+              name="linearMl"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="ex. 25 ou 12,5"
+              value={linearMlInput}
+              onChange={(e) => setLinearMlInput(e.target.value)}
+              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
+            />
+            {previewPerDenom ? (
+              <p className="text-sm font-semibold tabular-nums text-teal-800 dark:text-teal-200">
+                Prix calculé : {previewPerDenom}
+              </p>
+            ) : (
+              <span className="text-xs text-ink-soft">
+                Renseigne le montant payé et le linéaire pour afficher le prix au ml.
+              </span>
+            )}
+          </label>
+        ) : null}
+        {showQuantity && priceUnit === "M3" ? (
+          <label className="mt-3 flex flex-col gap-2">
+            <span className="text-xs font-medium text-ink-soft">
+              {btpPriceUnitQuantityHint("M3")}{" "}
+              <span className="font-normal text-ink-soft/75">optionnel</span>
+            </span>
+            <input
+              name="volumeM3"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="ex. 8 ou 3,5"
+              value={volumeM3Input}
+              onChange={(e) => setVolumeM3Input(e.target.value)}
+              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
+            />
+            {previewPerDenom ? (
+              <p className="text-sm font-semibold tabular-nums text-teal-800 dark:text-teal-200">
+                Prix calculé : {previewPerDenom}
+              </p>
+            ) : (
+              <span className="text-xs text-ink-soft">
+                Renseigne le montant payé et le volume pour afficher le prix au m³.
+              </span>
+            )}
+          </label>
+        ) : null}
+        {showQuantity && priceUnit === "UNIT" ? (
+          <label className="mt-3 flex flex-col gap-2">
+            <span className="text-xs font-medium text-ink-soft">
+              {btpPriceUnitQuantityHint("UNIT")}{" "}
+              <span className="font-normal text-ink-soft/75">optionnel</span>
+            </span>
+            <input
+              name="quantityUnits"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="ex. 3 ou 12"
+              value={quantityUnitsInput}
+              onChange={(e) => setQuantityUnitsInput(e.target.value)}
+              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
+            />
+            {previewPerDenom ? (
+              <p className="text-sm font-semibold tabular-nums text-teal-800 dark:text-teal-200">
+                Prix calculé : {previewPerDenom}
+              </p>
+            ) : (
+              <span className="text-xs text-ink-soft">
+                Renseigne le montant payé et la quantité pour afficher le prix par unité.
               </span>
             )}
           </label>

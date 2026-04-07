@@ -19,7 +19,14 @@ import {
   getBtpMetierLabelFromRef,
   getPrestationActiviteLabel,
 } from "@/lib/btp-referentiel";
-import { formatEurFromCents, formatEurPerSquareMeter, formatEurPerSquareMeterFromCents } from "@/lib/format-money";
+import {
+  formatEurFromCents,
+  formatEurPerCountableUnitFromCents,
+  formatEurPerCubicMeterFromCents,
+  formatEurPerLinearMeterFromCents,
+  formatEurPerSquareMeter,
+  formatEurPerSquareMeterFromCents,
+} from "@/lib/format-money";
 import type { PublicReviewPayload } from "@/lib/reviews-queries";
 import { authorDisplayName } from "@/lib/reviews-queries";
 import type { PublishedPriceStats } from "@/lib/reviews-price-stats";
@@ -346,7 +353,7 @@ export function EntrepriseFiche({
                       Moyenne / m²
                     </dt>
                     <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
-                      {formatEurPerSquareMeter(priceStats.perM2.avgEurPerM2)}
+                      {formatEurPerSquareMeter(priceStats.perM2.avg)}
                     </dd>
                   </div>
                   <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
@@ -354,7 +361,7 @@ export function EntrepriseFiche({
                       Min. / m²
                     </dt>
                     <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
-                      {formatEurPerSquareMeter(priceStats.perM2.minEurPerM2)}
+                      {formatEurPerSquareMeter(priceStats.perM2.min)}
                     </dd>
                   </div>
                   <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
@@ -362,7 +369,85 @@ export function EntrepriseFiche({
                       Max. / m²
                     </dt>
                     <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
-                      {formatEurPerSquareMeter(priceStats.perM2.maxEurPerM2)}
+                      {formatEurPerSquareMeter(priceStats.perM2.max)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ) : null}
+            {priceStats.perMl && priceStats.perMl.count > 0 ? (
+              <div className="mt-5 border-t border-teal-500/20 pt-5 dark:border-teal-500/25">
+                <h4 className="text-sm font-semibold text-ink">Prix au ml (mètre linéaire)</h4>
+                <p className="mt-1 text-xs text-ink-soft">{priceStats.perMl.count} avis avec linéaire renseigné.</p>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Moyenne / ml</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perMl.avg)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Min. / ml</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perMl.min)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Max. / ml</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perMl.max)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ) : null}
+            {priceStats.perM3 && priceStats.perM3.count > 0 ? (
+              <div className="mt-5 border-t border-teal-500/20 pt-5 dark:border-teal-500/25">
+                <h4 className="text-sm font-semibold text-ink">Prix au m³</h4>
+                <p className="mt-1 text-xs text-ink-soft">{priceStats.perM3.count} avis avec volume renseigné.</p>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Moyenne / m³</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perM3.avg)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Min. / m³</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perM3.min)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Max. / m³</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perM3.max)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ) : null}
+            {priceStats.perUnit && priceStats.perUnit.count > 0 ? (
+              <div className="mt-5 border-t border-teal-500/20 pt-5 dark:border-teal-500/25">
+                <h4 className="text-sm font-semibold text-ink">Prix par unité</h4>
+                <p className="mt-1 text-xs text-ink-soft">{priceStats.perUnit.count} avis avec quantité renseignée.</p>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Moyenne / unité</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perUnit.avg)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Min. / unité</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perUnit.min)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-ink/10 bg-[var(--card)]/80 px-4 py-3 dark:border-white/10">
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Max. / unité</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-ink">
+                      {formatEurPerSquareMeter(priceStats.perUnit.max)}
                     </dd>
                   </div>
                 </dl>
@@ -422,12 +507,58 @@ export function EntrepriseFiche({
                     m²
                   </p>
                 ) : null}
+                {r.linearMl != null && r.linearMl > 0 ? (
+                  <p className="mt-1 text-sm text-ink">
+                    <span className="font-medium text-ink-soft">Linéaire déclaré : </span>
+                    {new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(r.linearMl)} ml
+                  </p>
+                ) : null}
+                {r.volumeM3 != null && r.volumeM3 > 0 ? (
+                  <p className="mt-1 text-sm text-ink">
+                    <span className="font-medium text-ink-soft">Volume déclaré : </span>
+                    {new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(r.volumeM3)} m³
+                  </p>
+                ) : null}
+                {r.quantityUnits != null && r.quantityUnits > 0 ? (
+                  <p className="mt-1 text-sm text-ink">
+                    <span className="font-medium text-ink-soft">Quantité déclarée : </span>
+                    {new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(r.quantityUnits)}
+                  </p>
+                ) : null}
                 {r.amountPaidCents != null &&
                 r.surfaceM2 != null &&
-                r.surfaceM2 > 0 ? (
+                r.surfaceM2 > 0 &&
+                (r.priceUnit == null || r.priceUnit === "M2") ? (
                   <p className="mt-1 text-sm font-medium text-teal-800 dark:text-teal-200">
                     <span className="font-medium text-ink-soft">Prix au m² : </span>
                     {formatEurPerSquareMeterFromCents(r.amountPaidCents, r.surfaceM2)}
+                  </p>
+                ) : null}
+                {r.amountPaidCents != null &&
+                r.linearMl != null &&
+                r.linearMl > 0 &&
+                r.priceUnit === "ML" ? (
+                  <p className="mt-1 text-sm font-medium text-teal-800 dark:text-teal-200">
+                    <span className="font-medium text-ink-soft">Prix au ml : </span>
+                    {formatEurPerLinearMeterFromCents(r.amountPaidCents, r.linearMl)}
+                  </p>
+                ) : null}
+                {r.amountPaidCents != null &&
+                r.volumeM3 != null &&
+                r.volumeM3 > 0 &&
+                r.priceUnit === "M3" ? (
+                  <p className="mt-1 text-sm font-medium text-teal-800 dark:text-teal-200">
+                    <span className="font-medium text-ink-soft">Prix au m³ : </span>
+                    {formatEurPerCubicMeterFromCents(r.amountPaidCents, r.volumeM3)}
+                  </p>
+                ) : null}
+                {r.amountPaidCents != null &&
+                r.quantityUnits != null &&
+                r.quantityUnits > 0 &&
+                r.priceUnit === "UNIT" ? (
+                  <p className="mt-1 text-sm font-medium text-teal-800 dark:text-teal-200">
+                    <span className="font-medium text-ink-soft">Prix par unité : </span>
+                    {formatEurPerCountableUnitFromCents(r.amountPaidCents, r.quantityUnits)}
                   </p>
                 ) : null}
                 <ul className="mt-3 flex flex-wrap gap-2 text-xs text-ink-soft">

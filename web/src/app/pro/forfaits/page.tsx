@@ -9,34 +9,6 @@ export const metadata: Metadata = {
     "Formules pour les pros du bâtiment : Essentiel 10 €, Relation 20 €, Vitrine 30 €, Pilotage 50 €. Sans engagement.",
 };
 
-const perks = [
-  {
-    title: "Bouton Contacter",
-    body: "Les clients potentiels voient un bouton Contacter sur ta fiche : accès à ton numéro de téléphone, ton site web et tes réseaux sociaux.",
-    icon: PhoneGlyph,
-  },
-  {
-    title: "Ton site & tes réseaux",
-    body: "Lien vers ton site, Instagram, Facebook, LinkedIn… mis en avant sur ta fiche, comme des CTA commerciaux.",
-    icon: LinkGlyph,
-  },
-  {
-    title: "Sous-activités détaillées",
-    body: "Tu coches les prestations que tu assures vraiment : ton métier est aligné sur ton entreprise (SIREN + vérification documentaire).",
-    icon: ListChecksGlyph,
-  },
-  {
-    title: "Particuliers & pros",
-    body: "Indique si tu travailles pour des particuliers, des professionnels, ou les deux — les bons profils te contactent.",
-    icon: UsersGlyph,
-  },
-  {
-    title: "Visuels chantiers",
-    body: "Galerie photos pour montrer ton savoir-faire — idéal RGE, réno, second œuvre.",
-    icon: ImageGlyph,
-  },
-];
-
 type PlanDef = {
   id: string;
   name: string;
@@ -227,80 +199,7 @@ export default async function ProForfaitsPage() {
             </Link>
           </div>
         </section>
-
-        <section className="mt-20" aria-labelledby="avantages-pro">
-          <h2
-            id="avantages-pro"
-            className="text-center font-[family-name:var(--font-display)] text-xl text-ink sm:text-2xl"
-          >
-            Ce que débloque la fiche Pro
-          </h2>
-          <p className="mx-auto mt-2 max-w-xl text-center text-sm text-ink-soft">
-            Détail des options visibles sur ta fiche publique une fois abonné.
-          </p>
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {perks.map((p) => (
-              <article
-                key={p.title}
-                className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm backdrop-blur-sm dark:border-white/10"
-              >
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-700/12 text-teal-800 dark:bg-teal-500/15 dark:text-teal-300">
-                  <p.icon />
-                </div>
-                <h3 className="mt-4 text-lg font-semibold text-ink">{p.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-ink-soft">{p.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
       </div>
     </div>
-  );
-}
-
-function PhoneGlyph() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-    </svg>
-  );
-}
-
-function LinkGlyph() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-    </svg>
-  );
-}
-
-function ListChecksGlyph() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M9 11l3 3L22 4" />
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-    </svg>
-  );
-}
-
-function UsersGlyph() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
-
-function ImageGlyph() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <path d="M21 15l-5-5L5 21" />
-    </svg>
   );
 }

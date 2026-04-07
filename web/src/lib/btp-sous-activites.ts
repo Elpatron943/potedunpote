@@ -6,6 +6,7 @@ export type { SousActivite } from "@/lib/btp-referentiel-types";
 export {
   filterSousActiviteIdsForMetier,
   getPrestationActiviteLabel,
+  getPrestationPriceUnit,
   getSousActivitesForMetier,
   isPrestationPricedBySurface,
   isValidPrestationPair,

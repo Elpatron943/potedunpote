@@ -1,9 +1,9 @@
 import { unstable_cache } from "next/cache";
 
+import { priceUnitForPrestationId } from "@/lib/btp-prestation-price-units";
 import {
   SEED_BTP_METIERS,
   SEED_BTP_SOUS_ACTIVITES,
-  SEED_SURFACE_PRICED_ACTIVITE_IDS,
 } from "@/lib/btp-referentiel-seed";
 import type {
   BtpMetier,
@@ -11,15 +11,28 @@ import type {
   SerializedBtpReferentiel,
   SousActivite,
 } from "@/lib/btp-referentiel-types";
+import type { BtpPriceUnit } from "@/lib/btp-price-unit";
+import { isBtpPriceUnit } from "@/lib/btp-price-unit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type { BtpMetier, BtpReferentiel, SerializedBtpReferentiel, SousActivite } from "@/lib/btp-referentiel-types";
 
+function attachPriceUnits(rows: { id: string; label: string }[]): SousActivite[] {
+  return rows.map((r) => ({
+    id: r.id,
+    label: r.label,
+    priceUnit: priceUnitForPrestationId(r.id),
+  }));
+}
+
 function buildReferentielFromSeed(): BtpReferentiel {
+  const prestationsByMetierId: Record<string, SousActivite[]> = {};
+  for (const [mid, rows] of Object.entries(SEED_BTP_SOUS_ACTIVITES)) {
+    prestationsByMetierId[mid] = attachPriceUnits(rows);
+  }
   return {
     metiers: [...SEED_BTP_METIERS],
-    prestationsByMetierId: { ...SEED_BTP_SOUS_ACTIVITES },
-    surfacePricedActiviteIds: new Set(SEED_SURFACE_PRICED_ACTIVITE_IDS),
+    prestationsByMetierId,
   };
 }
 
@@ -31,7 +44,7 @@ async function loadReferentielFromSupabase(): Promise<BtpReferentiel | null> {
     .order("sortOrder", { ascending: true });
   const { data: prestationRows, error: e2 } = await supabase
     .from("BtpPrestation")
-    .select("id,metierId,label,pricedBySurface")
+    .select("id,metierId,label,pricedBySurface,priceUnit")
     .order("sortOrder", { ascending: true });
 
   if (e1 || e2) {
@@ -49,24 +62,27 @@ async function loadReferentielFromSupabase(): Promise<BtpReferentiel | null> {
   }));
 
   const prestationsByMetierId: Record<string, SousActivite[]> = {};
-  const surfacePricedActiviteIds = new Set<string>();
-
   for (const m of metiers) {
     prestationsByMetierId[m.id] = [];
   }
   for (const r of prestationRows) {
     const mid = r.metierId as string;
     if (!prestationsByMetierId[mid]) prestationsByMetierId[mid] = [];
+    const rawUnit = (r as { priceUnit?: string }).priceUnit;
+    const priceUnit: BtpPriceUnit =
+      rawUnit != null && isBtpPriceUnit(rawUnit)
+        ? rawUnit
+        : (r as { pricedBySurface?: boolean }).pricedBySurface === true
+          ? "M2"
+          : priceUnitForPrestationId(r.id as string);
     prestationsByMetierId[mid].push({
       id: r.id as string,
       label: r.label as string,
+      priceUnit,
     });
-    if (r.pricedBySurface === true) {
-      surfacePricedActiviteIds.add(r.id as string);
-    }
   }
 
-  return { metiers, prestationsByMetierId, surfacePricedActiviteIds };
+  return { metiers, prestationsByMetierId };
 }
 
 async function loadBtpReferentielUncached(): Promise<BtpReferentiel> {
@@ -80,25 +96,20 @@ async function loadBtpReferentielUncached(): Promise<BtpReferentiel> {
   return buildReferentielFromSeed();
 }
 
-/**
- * Données sérialisables pour `unstable_cache` : pas de `Set` (mal géré selon runtime Next / Turbopack).
- */
 async function loadBtpReferentielSerializableForCache(): Promise<{
   metiers: BtpMetier[];
   prestationsByMetierId: Record<string, SousActivite[]>;
-  surfacePricedActiviteIds: string[];
 }> {
   const ref = await loadBtpReferentielUncached();
   return {
     metiers: ref.metiers,
     prestationsByMetierId: ref.prestationsByMetierId,
-    surfacePricedActiviteIds: [...ref.surfacePricedActiviteIds],
   };
 }
 
 const getCachedBtpReferentielSerializable = unstable_cache(
   loadBtpReferentielSerializableForCache,
-  ["btp-referentiel-v2"],
+  ["btp-referentiel-v3-price-unit"],
   { revalidate: 3600 },
 );
 
@@ -107,31 +118,14 @@ const getCachedBtpReferentielSerializable = unstable_cache(
  * Mis en cache (revalidation 1 h).
  */
 export async function getBtpReferentiel(): Promise<BtpReferentiel> {
-  const p = await getCachedBtpReferentielSerializable();
-  return {
-    metiers: p.metiers,
-    prestationsByMetierId: p.prestationsByMetierId,
-    surfacePricedActiviteIds: new Set(p.surfacePricedActiviteIds),
-  };
-}
-
-function surfacePricedIdsAsArray(ref: BtpReferentiel | SerializedBtpReferentiel): string[] {
-  const raw = ref.surfacePricedActiviteIds;
-  if (raw instanceof Set) return [...raw];
-  if (Array.isArray(raw)) return [...raw];
-  return [];
+  return getCachedBtpReferentielSerializable();
 }
 
 export function serializeBtpReferentiel(ref: BtpReferentiel): SerializedBtpReferentiel {
   return {
     metiers: ref.metiers.map((m) => ({ id: m.id, label: m.label })),
     prestationsByMetierId: ref.prestationsByMetierId,
-    surfacePricedActiviteIds: surfacePricedIdsAsArray(ref),
   };
-}
-
-function surfaceSet(ref: BtpReferentiel | SerializedBtpReferentiel): Set<string> {
-  return new Set(surfacePricedIdsAsArray(ref));
 }
 
 export function getBtpMetierFromRef(
@@ -180,13 +174,22 @@ export function getPrestationActiviteLabel(
   return getSousActivitesForMetier(ref, metierId).find((a) => a.id === activiteId)?.label ?? null;
 }
 
+export function getPrestationPriceUnit(
+  ref: BtpReferentiel | SerializedBtpReferentiel,
+  metierId: string,
+  activiteId: string,
+): BtpPriceUnit | null {
+  if (!isValidPrestationPair(ref, metierId, activiteId)) return null;
+  return getSousActivitesForMetier(ref, metierId).find((a) => a.id === activiteId)?.priceUnit ?? null;
+}
+
+/** @deprecated Préférer getPrestationPriceUnit — vrai si l’unité est le m². */
 export function isPrestationPricedBySurface(
   ref: BtpReferentiel | SerializedBtpReferentiel,
   metierId: string,
   activiteId: string,
 ): boolean {
-  if (!isValidPrestationPair(ref, metierId, activiteId)) return false;
-  return surfaceSet(ref).has(activiteId);
+  return getPrestationPriceUnit(ref, metierId, activiteId) === "M2";
 }
 
 export async function getBtpMetier(id: string): Promise<BtpMetier | undefined> {

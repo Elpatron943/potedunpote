@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { BtpPriceUnit } from "@/lib/btp-price-unit";
+import { btpPriceUnitShortLabel, isBtpPriceUnit } from "@/lib/btp-price-unit";
 type MetierOpt = { id: string; label: string };
-type PrestationOpt = { id: string; label: string };
+type PrestationOpt = { id: string; label: string; priceUnit: BtpPriceUnit };
 
 type BanMunicipalityProperties = {
   label?: string;
@@ -66,7 +68,8 @@ export function HomeSearchForm({
   defaultRge,
   defaultActs,
   defaultMinStars,
-  defaultMaxEurPerM2,
+  priceFilterParam,
+  defaultMaxDenom,
   defaultEntreprise,
 }: {
   metiers: MetierOpt[];
@@ -78,8 +81,13 @@ export function HomeSearchForm({
   defaultActs?: string[];
   /** Moyenne minimale des avis publiés (1–5), depuis l’URL (`stars`). */
   defaultMinStars?: number | null;
-  /** Prix moyen au m² max (€/m²), depuis l’URL (`pmaxm2`). */
-  defaultMaxEurPerM2?: string;
+  /**
+   * Nom du champ query pour le plafond de prix / unité (`pmaxm2`, `pmaxml`, `pmaxm3`, `pmaxunit`)
+   * quand toutes les prestations cochées partagent la même unité ; sinon null.
+   */
+  priceFilterParam: string | null;
+  /** Valeur initiale du plafond (€ par unité homogène). */
+  defaultMaxDenom?: string;
   /** Recherche directe SIREN / SIRET / raison sociale (`entreprise`). */
   defaultEntreprise?: string;
 }) {
@@ -92,7 +100,7 @@ export function HomeSearchForm({
 
   const [metier, setMetier] = useState(defaultMetier);
   const [acts, setActs] = useState<string[]>(() => asStringArray(defaultActs));
-  const [maxEurPerM2, setMaxEurPerM2] = useState(() => (defaultMaxEurPerM2 ?? "").trim());
+  const [maxDenomPrice, setMaxDenomPrice] = useState(() => (defaultMaxDenom ?? "").trim());
 
   const sousActivites = useMemo(
     () => prestationsByMetierId[metier] ?? [],
@@ -221,6 +229,9 @@ export function HomeSearchForm({
           <input type="hidden" name="metier" value="" />
           <input type="hidden" name="loc" value="" />
           <input type="hidden" name="pmaxm2" value="" />
+          <input type="hidden" name="pmaxml" value="" />
+          <input type="hidden" name="pmaxm3" value="" />
+          <input type="hidden" name="pmaxunit" value="" />
           <label className="flex flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
               SIREN, SIRET ou dénomination sociale
@@ -366,7 +377,12 @@ export function HomeSearchForm({
                       }}
                       className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink/20 text-teal-700 focus:ring-teal-600 dark:text-teal-500"
                     />
-                    <span className="text-sm leading-snug text-ink">{a.label}</span>
+                    <span className="text-sm leading-snug text-ink">
+                      {a.label}{" "}
+                      <span className="text-ink-soft">
+                        ({btpPriceUnitShortLabel(isBtpPriceUnit(a.priceUnit) ? a.priceUnit : "FORFAIT")})
+                      </span>
+                    </span>
                   </label>
                 </li>
               );
@@ -376,29 +392,63 @@ export function HomeSearchForm({
       )}
 
       {searchMode === "metier" && asStringArray(acts).length === 0 ? (
-        <input type="hidden" name="pmaxm2" value="" />
+        <>
+          <input type="hidden" name="pmaxm2" value="" />
+          <input type="hidden" name="pmaxml" value="" />
+          <input type="hidden" name="pmaxm3" value="" />
+          <input type="hidden" name="pmaxunit" value="" />
+        </>
       ) : null}
 
-      {searchMode === "metier" && asStringArray(acts).length > 0 && (
+      {searchMode === "metier" && asStringArray(acts).length > 0 && priceFilterParam != null && (
         <label className="flex flex-col gap-2 rounded-2xl border border-ink/10 bg-canvas/50 p-4 dark:border-white/10 dark:bg-canvas-muted/30">
           <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
-            Prix moyen au m² max (prestations cochées)
+            {priceFilterParam === "pmaxm2"
+              ? "Prix moyen au m² max (prestations cochées)"
+              : priceFilterParam === "pmaxml"
+                ? "Prix moyen au ml max (prestations cochées)"
+                : priceFilterParam === "pmaxm3"
+                  ? "Prix moyen au m³ max (prestations cochées)"
+                  : "Prix moyen par unité max (prestations cochées)"}
           </span>
+          {(["pmaxm2", "pmaxml", "pmaxm3", "pmaxunit"] as const).map((p) =>
+            p === priceFilterParam ? null : (
+              <input key={p} type="hidden" name={p} value="" />
+            ),
+          )}
           <input
-            name="pmaxm2"
+            name={priceFilterParam}
             inputMode="decimal"
-            value={maxEurPerM2}
-            onChange={(e) => setMaxEurPerM2(e.target.value)}
+            value={maxDenomPrice}
+            onChange={(e) => setMaxDenomPrice(e.target.value)}
             placeholder="ex. 85"
             className="w-full rounded-xl border border-ink/10 bg-canvas/80 px-3 py-3 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
           />
           <span className="text-xs leading-relaxed text-ink-soft">
-            Basé sur la <strong className="font-medium text-ink">moyenne du prix au m²</strong> (montant
-            déclaré ÷ surface) sur les avis publiés pour la ou les prestation(s) sélectionnée(s). Les
-            entreprises sans avis comparable (montant + surface) pour ces prestations sont masquées.
+            Basé sur la{" "}
+            <strong className="font-medium text-ink">
+              moyenne du prix par unité homogène
+            </strong>{" "}
+            (montant déclaré ÷ quantité adaptée : m², ml, m³ ou nombre d’unités) sur les avis publiés
+            pour la ou les prestation(s) sélectionnée(s). Les entreprises sans avis comparable pour ces
+            prestations sont masquées.
           </span>
         </label>
       )}
+
+      {searchMode === "metier" && asStringArray(acts).length > 0 && priceFilterParam == null ? (
+        <>
+          <input type="hidden" name="pmaxm2" value="" />
+          <input type="hidden" name="pmaxml" value="" />
+          <input type="hidden" name="pmaxm3" value="" />
+          <input type="hidden" name="pmaxunit" value="" />
+          <p className="rounded-2xl border border-ink/10 bg-canvas/40 px-4 py-3 text-xs leading-relaxed text-ink-soft dark:border-white/10 dark:bg-canvas-muted/25">
+            Pour filtrer par <strong className="text-ink">prix par unité</strong>, coche des prestations
+            qui partagent la même unité (toutes au m², toutes au ml, etc.). Avec un mélange
+            d’unités, ce filtre est désactivé.
+          </p>
+        </>
+      ) : null}
 
       <label className="flex flex-col gap-2 rounded-2xl border border-ink/10 bg-canvas/50 p-4 dark:border-white/10 dark:bg-canvas-muted/30">
         <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">

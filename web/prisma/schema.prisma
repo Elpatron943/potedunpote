@@ -128,6 +128,8 @@ model BtpPrestation {
   metier          BtpMetier @relation(fields: [metierId], references: [id], onDelete: Cascade)
   label           String
   pricedBySurface Boolean   @default(false)
+  /// M2 | ML | M3 | UNIT | FORFAIT — unité du prix pour comparer les avis.
+  priceUnit       String    @default("FORFAIT")
   sortOrder       Int       @default(0)
 
   @@index([metierId])
@@ -195,6 +197,11 @@ model Review {
   amountPaidCents      Int?
   /// Surface de chantier en m² (prestations au m²) — optionnel.
   surfaceM2            Float?
+  /// Même référentiel que `BtpPrestation.priceUnit` au moment du dépôt.
+  priceUnit            String?
+  linearMl             Float?
+  volumeM3             Float?
+  quantityUnits        Float?
   status        ReviewStatus         @default(PENDING)
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt

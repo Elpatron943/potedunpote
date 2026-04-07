@@ -25,6 +25,10 @@ export type PublicReviewPayload = {
   specialiteId: string | null;
   amountPaidCents: number | null;
   surfaceM2: number | null;
+  priceUnit: string | null;
+  linearMl: number | null;
+  volumeM3: number | null;
+  quantityUnits: number | null;
   durationMinutes: number | null;
   pricePrestationOnly: boolean | null;
   status: ReviewStatus;
@@ -92,6 +96,10 @@ export async function getPublishedReviewsForSiren(siren: string): Promise<Public
       specialiteId: (row.specialiteId as string | null) ?? null,
       amountPaidCents: (row.amountPaidCents as number | null) ?? null,
       surfaceM2: (row.surfaceM2 as number | null) ?? null,
+      priceUnit: (row.priceUnit as string | null) ?? null,
+      linearMl: (row.linearMl as number | null) ?? null,
+      volumeM3: (row.volumeM3 as number | null) ?? null,
+      quantityUnits: (row.quantityUnits as number | null) ?? null,
       durationMinutes: (row.durationMinutes as number | null) ?? null,
       pricePrestationOnly: (row.pricePrestationOnly as boolean | null) ?? null,
       status: row.status as ReviewStatus,

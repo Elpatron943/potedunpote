@@ -56,6 +56,8 @@ type PageProps = {
     pmaxml?: string;
     pmaxm3?: string;
     pmaxunit?: string;
+    /** Plafond prix moyen forfait (prestations au forfait). */
+    pmaxforfait?: string;
     /** SIREN, SIRET ou dénomination (recherche directe). */
     entreprise?: string;
   }>;
@@ -96,6 +98,7 @@ function maxDenomRawForUnit(
     pmaxml?: string;
     pmaxm3?: string;
     pmaxunit?: string;
+    pmaxforfait?: string;
   },
 ): string {
   switch (denom) {
@@ -107,6 +110,8 @@ function maxDenomRawForUnit(
       return sp.pmaxm3 ?? "";
     case "UNIT":
       return sp.pmaxunit ?? "";
+    case "FORFAIT":
+      return sp.pmaxforfait ?? "";
     default:
       return "";
   }
@@ -333,7 +338,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         </div>
 
         {/* Messages & résultats */}
-        <div className="mx-auto mt-14 max-w-2xl space-y-6">
+        <div id="resultats" className="mx-auto mt-14 max-w-2xl space-y-6">
           {result && !result.ok && (
             <div
               className="rounded-2xl border border-red-500/25 bg-red-500/[0.08] px-5 py-4 text-sm text-red-900 dark:text-red-200"

@@ -1,11 +1,10 @@
 import type { BtpPriceUnit } from "@/lib/btp-price-unit";
 
 /**
- * Unité de prix par id de spécialité (`BtpPrestation.id` / `Specialite.id`).
- * Règles : m² (surfaces, revêtements, isolation plane…), ml (linéaire : gouttières, clôtures, plinthes…),
- * m³ (terrassement, gros béton volumique…), unité (fenêtre, porte, point, carottage…), forfait (ensemble défini).
+ * Unité de prix par id de base de spécialité (suffixe `-remplacement` / `-neuf` hérite de la même unité).
+ * Aligné sur la colonne `priceUnit` de `BtpPrestation` / `Specialite`.
  */
-export const BTP_PRESTATION_PRICE_UNIT: Record<string, BtpPriceUnit> = {
+const BASE_BTP_PRESTATION_PRICE_UNIT: Record<string, BtpPriceUnit> = {
   // Plomberie
   "sd-bain-complete": "FORFAIT",
   "douche-baignoire": "FORFAIT",
@@ -104,6 +103,26 @@ export const BTP_PRESTATION_PRICE_UNIT: Record<string, BtpPriceUnit> = {
   "autre-sur-devis": "FORFAIT",
 };
 
+function expandPriceUnits(base: Record<string, BtpPriceUnit>): Record<string, BtpPriceUnit> {
+  const out: Record<string, BtpPriceUnit> = {};
+  for (const [id, u] of Object.entries(base)) {
+    out[`${id}-remplacement`] = u;
+    out[`${id}-neuf`] = u;
+  }
+  return out;
+}
+
+export const BTP_PRESTATION_PRICE_UNIT: Record<string, BtpPriceUnit> =
+  expandPriceUnits(BASE_BTP_PRESTATION_PRICE_UNIT);
+
 export function priceUnitForPrestationId(id: string): BtpPriceUnit {
-  return BTP_PRESTATION_PRICE_UNIT[id] ?? "FORFAIT";
+  const u =
+    BTP_PRESTATION_PRICE_UNIT[id] ?? BASE_BTP_PRESTATION_PRICE_UNIT[id];
+  if (u) return u;
+  const m = /^(.+)-(remplacement|neuf)$/.exec(id);
+  if (m) {
+    const b = BASE_BTP_PRESTATION_PRICE_UNIT[m[1]];
+    if (b) return b;
+  }
+  return "FORFAIT";
 }

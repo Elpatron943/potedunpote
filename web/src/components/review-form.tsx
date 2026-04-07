@@ -31,7 +31,7 @@ function parsePreviewEurosToCents(s: string): number | null {
   return Number.isSafeInteger(cents) ? cents : null;
 }
 
-function parsePreviewSurfaceM2(s: string): number | null {
+function parsePreviewPositiveNumber(s: string): number | null {
   const t = s.trim().replace(/\s/g, "").replace(",", ".");
   if (t === "") return null;
   const n = Number(t);
@@ -52,10 +52,7 @@ export function ReviewForm({
   const [metierId, setMetierId] = useState("");
   const [specialiteId, setSpecialiteId] = useState("");
   const [amountPaidEuros, setAmountPaidEuros] = useState("");
-  const [surfaceM2Input, setSurfaceM2Input] = useState("");
-  const [linearMlInput, setLinearMlInput] = useState("");
-  const [volumeM3Input, setVolumeM3Input] = useState("");
-  const [quantityUnitsInput, setQuantityUnitsInput] = useState("");
+  const [quantityInput, setQuantityInput] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("");
 
   const sousActivites = getSousActivitesForMetier(referentiel, metierId);
@@ -70,36 +67,37 @@ export function ReviewForm({
     setSpecialiteId("");
   }, [metierId]);
 
+  useEffect(() => {
+    setQuantityInput("");
+  }, [priceUnit]);
+
   const previewPerDenom = useMemo(() => {
     if (!showQuantity || priceUnit == null) return null;
     const cents = parsePreviewEurosToCents(amountPaidEuros);
     if (cents == null) return null;
     if (priceUnit === "M2") {
-      const m2 = parsePreviewSurfaceM2(surfaceM2Input);
+      const m2 = parsePreviewPositiveNumber(quantityInput);
       if (m2 == null) return null;
       return formatEurPerSquareMeterFromCents(cents, m2);
     }
     if (priceUnit === "ML") {
-      const ml = parsePreviewSurfaceM2(linearMlInput);
+      const ml = parsePreviewPositiveNumber(quantityInput);
       if (ml == null) return null;
       return formatEurPerLinearMeterFromCents(cents, ml);
     }
     if (priceUnit === "M3") {
-      const m3 = parsePreviewSurfaceM2(volumeM3Input);
+      const m3 = parsePreviewPositiveNumber(quantityInput);
       if (m3 == null) return null;
       return formatEurPerCubicMeterFromCents(cents, m3);
     }
-    const u = parsePreviewSurfaceM2(quantityUnitsInput);
+    const u = parsePreviewPositiveNumber(quantityInput);
     if (u == null) return null;
     return formatEurPerCountableUnitFromCents(cents, u);
   }, [
     showQuantity,
     priceUnit,
     amountPaidEuros,
-    surfaceM2Input,
-    linearMlInput,
-    volumeM3Input,
-    quantityUnitsInput,
+    quantityInput,
   ]);
 
   return (
@@ -290,47 +288,28 @@ export function ReviewForm({
           </span>
         </label>
 
-        {showQuantity && priceUnit === "M2" ? (
+        {showQuantity && priceUnit != null ? (
           <label className="mt-3 flex flex-col gap-2">
             <span className="text-xs font-medium text-ink-soft">
-              {btpPriceUnitQuantityHint("M2")}{" "}
+              {btpPriceUnitQuantityHint(priceUnit)}{" "}
               <span className="font-normal text-ink-soft/75">optionnel</span>
             </span>
-            <input
-              name="surfaceM2"
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="ex. 12 ou 35,5"
-              value={surfaceM2Input}
-              onChange={(e) => setSurfaceM2Input(e.target.value)}
-              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
-            />
-            {previewPerDenom ? (
-              <p className="text-sm font-semibold tabular-nums text-teal-800 dark:text-teal-200">
-                Prix calculé : {previewPerDenom}
-              </p>
+            {priceUnit === "M2" ? (
+              <input type="hidden" name="surfaceM2" value={quantityInput} />
+            ) : priceUnit === "ML" ? (
+              <input type="hidden" name="linearMl" value={quantityInput} />
+            ) : priceUnit === "M3" ? (
+              <input type="hidden" name="volumeM3" value={quantityInput} />
             ) : (
-              <span className="text-xs text-ink-soft">
-                Renseigne le montant payé et la surface pour afficher le prix au m².
-              </span>
+              <input type="hidden" name="quantityUnits" value={quantityInput} />
             )}
-          </label>
-        ) : null}
-        {showQuantity && priceUnit === "ML" ? (
-          <label className="mt-3 flex flex-col gap-2">
-            <span className="text-xs font-medium text-ink-soft">
-              {btpPriceUnitQuantityHint("ML")}{" "}
-              <span className="font-normal text-ink-soft/75">optionnel</span>
-            </span>
             <input
-              name="linearMl"
               type="text"
               inputMode="decimal"
               autoComplete="off"
-              placeholder="ex. 25 ou 12,5"
-              value={linearMlInput}
-              onChange={(e) => setLinearMlInput(e.target.value)}
+              placeholder={priceUnit === "UNIT" ? "ex. 3 ou 12" : "ex. 12 ou 35,5"}
+              value={quantityInput}
+              onChange={(e) => setQuantityInput(e.target.value)}
               className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
             />
             {previewPerDenom ? (
@@ -339,61 +318,7 @@ export function ReviewForm({
               </p>
             ) : (
               <span className="text-xs text-ink-soft">
-                Renseigne le montant payé et le linéaire pour afficher le prix au ml.
-              </span>
-            )}
-          </label>
-        ) : null}
-        {showQuantity && priceUnit === "M3" ? (
-          <label className="mt-3 flex flex-col gap-2">
-            <span className="text-xs font-medium text-ink-soft">
-              {btpPriceUnitQuantityHint("M3")}{" "}
-              <span className="font-normal text-ink-soft/75">optionnel</span>
-            </span>
-            <input
-              name="volumeM3"
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="ex. 8 ou 3,5"
-              value={volumeM3Input}
-              onChange={(e) => setVolumeM3Input(e.target.value)}
-              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
-            />
-            {previewPerDenom ? (
-              <p className="text-sm font-semibold tabular-nums text-teal-800 dark:text-teal-200">
-                Prix calculé : {previewPerDenom}
-              </p>
-            ) : (
-              <span className="text-xs text-ink-soft">
-                Renseigne le montant payé et le volume pour afficher le prix au m³.
-              </span>
-            )}
-          </label>
-        ) : null}
-        {showQuantity && priceUnit === "UNIT" ? (
-          <label className="mt-3 flex flex-col gap-2">
-            <span className="text-xs font-medium text-ink-soft">
-              {btpPriceUnitQuantityHint("UNIT")}{" "}
-              <span className="font-normal text-ink-soft/75">optionnel</span>
-            </span>
-            <input
-              name="quantityUnits"
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="ex. 3 ou 12"
-              value={quantityUnitsInput}
-              onChange={(e) => setQuantityUnitsInput(e.target.value)}
-              className="rounded-xl border border-ink/10 bg-canvas/80 px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 dark:border-white/10 dark:bg-canvas-muted/40"
-            />
-            {previewPerDenom ? (
-              <p className="text-sm font-semibold tabular-nums text-teal-800 dark:text-teal-200">
-                Prix calculé : {previewPerDenom}
-              </p>
-            ) : (
-              <span className="text-xs text-ink-soft">
-                Renseigne le montant payé et la quantité pour afficher le prix par unité.
+                Renseigne le montant payé et {btpPriceUnitShortLabel(priceUnit)} pour afficher le prix par unité.
               </span>
             )}
           </label>

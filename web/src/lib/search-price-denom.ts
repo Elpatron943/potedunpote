@@ -3,16 +3,16 @@ import type { BtpPriceUnit } from "@/lib/btp-price-unit";
 import { getPrestationPriceUnit } from "@/lib/btp-referentiel";
 
 /** Unités pour lesquelles on peut filtrer « prix moyen / unité max » sur la recherche. */
-export type SearchComparablePriceUnit = "M2" | "ML" | "M3" | "UNIT";
+export type SearchComparablePriceUnit = "M2" | "ML" | "M3" | "UNIT" | "FORFAIT";
 
-const SEARCHABLE: SearchComparablePriceUnit[] = ["M2", "ML", "M3", "UNIT"];
+const SEARCHABLE: SearchComparablePriceUnit[] = ["M2", "ML", "M3", "UNIT", "FORFAIT"];
 
 function isSearchable(u: BtpPriceUnit): u is SearchComparablePriceUnit {
   return (SEARCHABLE as readonly string[]).includes(u);
 }
 
 /**
- * Si toutes les spécialités cochées partagent la même unité (autre que forfait),
+ * Si toutes les spécialités cochées partagent la même unité,
  * retourne cette unité pour appliquer un filtre prix / unité homogène.
  */
 export function getHomogeneousSearchPriceUnit(
@@ -39,6 +39,8 @@ export function searchPriceUnitToQueryParam(unit: SearchComparablePriceUnit): st
       return "pmaxm3";
     case "UNIT":
       return "pmaxunit";
+    case "FORFAIT":
+      return "pmaxforfait";
     default:
       return "pmaxm2";
   }

@@ -16,6 +16,23 @@ function denomQuantityFromRow(
 
   const pu = row.priceUnit as string | null | undefined;
 
+  if (denom === "FORFAIT") {
+    const m2 = row.surfaceM2 as number | null | undefined;
+    const ml = row.linearMl as number | null | undefined;
+    const m3 = row.volumeM3 as number | null | undefined;
+    const u = row.quantityUnits as number | null | undefined;
+
+    const hasQty =
+      (m2 != null && m2 > 0) ||
+      (ml != null && ml > 0) ||
+      (m3 != null && m3 > 0) ||
+      (u != null && u > 0);
+
+    // Forfait explicite, ou compat rétro : pas d'unité enregistrée et aucune quantité.
+    if (pu === "FORFAIT" || ((pu == null || pu === "") && !hasQty)) return 1;
+    return null;
+  }
+
   if (denom === "M2") {
     const m2 = row.surfaceM2 as number | null | undefined;
     if (m2 == null || !(m2 > 0)) return null;

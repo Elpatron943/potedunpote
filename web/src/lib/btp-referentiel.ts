@@ -109,7 +109,7 @@ async function loadBtpReferentielSerializableForCache(): Promise<{
 
 const getCachedBtpReferentielSerializable = unstable_cache(
   loadBtpReferentielSerializableForCache,
-  ["btp-referentiel-v3-price-unit"],
+  ["btp-referentiel-v4-remplacement-neuf"],
   { revalidate: 3600 },
 );
 

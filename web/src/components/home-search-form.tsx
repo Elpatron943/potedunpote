@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { BtpPriceUnit } from "@/lib/btp-price-unit";
 import { btpPriceUnitShortLabel, isBtpPriceUnit } from "@/lib/btp-price-unit";
+import type { SearchComparablePriceUnit } from "@/lib/search-price-denom";
+import { searchPriceUnitToQueryParam } from "@/lib/search-price-denom";
 type MetierOpt = { id: string; label: string };
 type PrestationOpt = { id: string; label: string; priceUnit: BtpPriceUnit };
 
@@ -116,6 +118,52 @@ export function HomeSearchForm({
   const listId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const homogeneousUnit = useMemo<SearchComparablePriceUnit | null>(() => {
+    const selected = asStringArray(acts);
+    if (searchMode !== "metier" || !metier.trim() || selected.length === 0) return null;
+    const byId = new Map(sousActivites.map((a) => [a.id, a.priceUnit] as const));
+    const units = selected.map((id) => byId.get(id)).filter(Boolean) as BtpPriceUnit[];
+    if (units.length !== selected.length) return null;
+    const u0 = units[0];
+    if (u0 !== "M2" && u0 !== "ML" && u0 !== "M3" && u0 !== "UNIT" && u0 !== "FORFAIT") return null;
+    if (!units.every((u) => u === u0)) return null;
+    return u0;
+  }, [acts, metier, searchMode, sousActivites]);
+
+  const lockedUnit = useMemo<BtpPriceUnit | null>(() => {
+    const selected = asStringArray(acts);
+    if (searchMode !== "metier" || !metier.trim() || selected.length === 0) return null;
+    const byId = new Map(sousActivites.map((a) => [a.id, a.priceUnit] as const));
+    const u = byId.get(selected[0]);
+    return u ?? null;
+  }, [acts, metier, searchMode, sousActivites]);
+
+  const livePriceFilterParam = homogeneousUnit ? searchPriceUnitToQueryParam(homogeneousUnit) : null;
+
+  useEffect(() => {
+    // Quand l'unité homogène change (coches), on évite de garder un plafond incohérent.
+    setMaxDenomPrice((prev) => (prev.trim() ? "" : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [livePriceFilterParam]);
+
+  useEffect(() => {
+    // Si l'URL (ou un état) contient un mélange d'unités, on garde uniquement celles de la 1ère cochée
+    // pour éviter toute confusion (liste filtrée par unité).
+    if (lockedUnit == null) return;
+    const byId = new Map(sousActivites.map((a) => [a.id, a.priceUnit] as const));
+    setActs((prev) => {
+      const p = asStringArray(prev);
+      const next = p.filter((id) => byId.get(id) === lockedUnit);
+      return next.length === p.length ? prev : next;
+    });
+  }, [lockedUnit, sousActivites]);
+
+  const visibleSousActivites = useMemo(() => {
+    if (searchMode !== "metier") return sousActivites;
+    if (lockedUnit == null) return sousActivites;
+    return sousActivites.filter((a) => a.priceUnit === lockedUnit);
+  }, [lockedUnit, searchMode, sousActivites]);
+
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
@@ -195,7 +243,7 @@ export function HomeSearchForm({
     }`;
 
   return (
-    <form method="get" action="/" className="space-y-5">
+    <form method="get" action="/#resultats" className="space-y-5">
       <div
         className="flex flex-col gap-2 rounded-2xl border border-ink/10 bg-canvas/40 p-1.5 dark:border-white/10 dark:bg-canvas-muted/25"
         role="group"
@@ -232,6 +280,7 @@ export function HomeSearchForm({
           <input type="hidden" name="pmaxml" value="" />
           <input type="hidden" name="pmaxm3" value="" />
           <input type="hidden" name="pmaxunit" value="" />
+          <input type="hidden" name="pmaxforfait" value="" />
           <label className="flex flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
               SIREN, SIRET ou dénomination sociale
@@ -357,11 +406,20 @@ export function HomeSearchForm({
             dans le nom. Les artisans Pro ayant indiqué la même prestation sur la plateforme sont mis en
             tête des résultats.
           </p>
+          {lockedUnit != null ? (
+            <p className="mb-3 text-xs leading-relaxed text-ink-soft">
+              Liste filtrée automatiquement sur l’unité{" "}
+              <strong className="font-medium text-ink">
+                {btpPriceUnitShortLabel(isBtpPriceUnit(lockedUnit) ? lockedUnit : "FORFAIT")}
+              </strong>{" "}
+              (décoche tout pour revoir toutes les prestations).
+            </p>
+          ) : null}
           {asStringArray(acts).map((id) => (
             <input key={id} type="hidden" name="act" value={id} />
           ))}
           <ul className="max-h-52 space-y-2 overflow-y-auto pr-1 sm:max-h-none sm:columns-2 sm:gap-x-6 sm:[&>li]:break-inside-avoid">
-            {sousActivites.map((a) => {
+            {visibleSousActivites.map((a) => {
               const checked = asStringArray(acts).includes(a.id);
               return (
                 <li key={a.id}>
@@ -397,27 +455,30 @@ export function HomeSearchForm({
           <input type="hidden" name="pmaxml" value="" />
           <input type="hidden" name="pmaxm3" value="" />
           <input type="hidden" name="pmaxunit" value="" />
+          <input type="hidden" name="pmaxforfait" value="" />
         </>
       ) : null}
 
-      {searchMode === "metier" && asStringArray(acts).length > 0 && priceFilterParam != null && (
+      {searchMode === "metier" && asStringArray(acts).length > 0 && livePriceFilterParam != null && (
         <label className="flex flex-col gap-2 rounded-2xl border border-ink/10 bg-canvas/50 p-4 dark:border-white/10 dark:bg-canvas-muted/30">
           <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
-            {priceFilterParam === "pmaxm2"
+            {livePriceFilterParam === "pmaxm2"
               ? "Prix moyen au m² max (prestations cochées)"
-              : priceFilterParam === "pmaxml"
+              : livePriceFilterParam === "pmaxml"
                 ? "Prix moyen au ml max (prestations cochées)"
-                : priceFilterParam === "pmaxm3"
+                : livePriceFilterParam === "pmaxm3"
                   ? "Prix moyen au m³ max (prestations cochées)"
-                  : "Prix moyen par unité max (prestations cochées)"}
+                  : livePriceFilterParam === "pmaxforfait"
+                    ? "Prix moyen forfait max (prestations cochées)"
+                    : "Prix moyen par unité max (prestations cochées)"}
           </span>
-          {(["pmaxm2", "pmaxml", "pmaxm3", "pmaxunit"] as const).map((p) =>
-            p === priceFilterParam ? null : (
+          {(["pmaxm2", "pmaxml", "pmaxm3", "pmaxunit", "pmaxforfait"] as const).map((p) =>
+            p === livePriceFilterParam ? null : (
               <input key={p} type="hidden" name={p} value="" />
             ),
           )}
           <input
-            name={priceFilterParam}
+            name={livePriceFilterParam}
             inputMode="decimal"
             value={maxDenomPrice}
             onChange={(e) => setMaxDenomPrice(e.target.value)}
@@ -436,16 +497,18 @@ export function HomeSearchForm({
         </label>
       )}
 
-      {searchMode === "metier" && asStringArray(acts).length > 0 && priceFilterParam == null ? (
+      {searchMode === "metier" && asStringArray(acts).length > 0 && livePriceFilterParam == null ? (
         <>
           <input type="hidden" name="pmaxm2" value="" />
           <input type="hidden" name="pmaxml" value="" />
           <input type="hidden" name="pmaxm3" value="" />
           <input type="hidden" name="pmaxunit" value="" />
+          <input type="hidden" name="pmaxforfait" value="" />
           <p className="rounded-2xl border border-ink/10 bg-canvas/40 px-4 py-3 text-xs leading-relaxed text-ink-soft dark:border-white/10 dark:bg-canvas-muted/25">
-            Pour filtrer par <strong className="text-ink">prix par unité</strong>, coche des prestations
-            qui partagent la même unité (toutes au m², toutes au ml, etc.). Avec un mélange
-            d’unités, ce filtre est désactivé.
+            Le filtre “prix max” est disponible uniquement pour des prestations au{" "}
+            <strong className="text-ink">m²</strong>, au <strong className="text-ink">ml</strong>, au{" "}
+            <strong className="text-ink">m³</strong>, à l’<strong className="text-ink">unité</strong> ou au{" "}
+            <strong className="text-ink">forfait</strong>.
           </p>
         </>
       ) : null}

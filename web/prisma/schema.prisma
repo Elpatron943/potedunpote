@@ -74,6 +74,8 @@ model User {
 
   artisanProfile ArtisanProfile?
   reviews        Review[]
+  /// Demandes de devis passées en étant connecté (ProLead).
+  buyerLeads     ProLead[] @relation("BuyerProLeads")
   chatbotLogs    ChatbotLog[]
   /// Dépôts Kbis soumis avant association SIREN (statut APPROVED / REJECTED).
   proKbisVerifications ProKbisVerification[]
@@ -213,6 +215,9 @@ model ProLead {
   id        String   @id @default(cuid())
   siren     String
   artisan   ArtisanProfile @relation(fields: [siren], references: [siren], onDelete: Cascade)
+  /// Compte acheteur (si demande passée connecté) — liste côté /compte/demandes
+  requesterUserId String?
+  requesterUser   User?   @relation("BuyerProLeads", fields: [requesterUserId], references: [id], onDelete: SetNull)
   status    String   @default("NEW")
   fullName  String?
   email     String?
@@ -232,6 +237,7 @@ model ProLead {
   aiDraft     ProLeadAiDraft?
 
   @@index([siren])
+  @@index([requesterUserId])
   @@index([status])
   @@index([createdAt])
   @@index([prestationId])

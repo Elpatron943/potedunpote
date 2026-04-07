@@ -84,6 +84,14 @@ export default async function ComptePage() {
           </li>
           <li>
             <Link
+              href="/compte/demandes"
+              className="inline-flex rounded-xl border border-ink/15 bg-canvas-muted/50 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-muted dark:border-white/10 dark:bg-white/5"
+            >
+              Mes demandes de devis
+            </Link>
+          </li>
+          <li>
+            <Link
               href="/compte#mes-avis"
               className="inline-flex rounded-xl border border-ink/15 bg-canvas-muted/50 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-muted dark:border-white/10 dark:bg-white/5"
             >

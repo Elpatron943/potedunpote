@@ -16,6 +16,7 @@ import {
 } from "@/lib/quote-request";
 import { finalizeQuoteLeadSession, isValidQuoteSessionId } from "@/lib/quote-lead-files";
 import { parseQuoteVisionImagesFromFormData } from "@/lib/quote-vision-inline";
+import { getSession } from "@/lib/auth-session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getProUserEmailForSiren,
@@ -118,6 +119,18 @@ export async function POST(req: Request) {
   const inlineVisionImages = visionParsed.images;
 
   const supabase = getSupabaseAdmin();
+  const session = await getSession();
+  let emailStored: string | null = email && email.trim() ? email.trim().toLowerCase() : null;
+  let requesterUserId: string | null = null;
+  if (session) {
+    const { data: uRow } = await supabase.from("User").select("email").eq("id", session.userId).maybeSingle();
+    const uEmail = typeof uRow?.email === "string" ? uRow.email.trim().toLowerCase() : "";
+    if (uEmail) {
+      emailStored = uEmail;
+      requesterUserId = session.userId;
+    }
+  }
+
   const now = new Date().toISOString();
   const leadId = createId();
 
@@ -126,13 +139,14 @@ export async function POST(req: Request) {
     siren,
     status: "NEW",
     fullName,
-    email,
+    email: emailStored,
     phone,
     message,
     source: "entreprise",
     metierId,
     prestationId,
     requestPayload,
+    requesterUserId,
     createdAt: now,
     updatedAt: now,
   });
@@ -142,7 +156,7 @@ export async function POST(req: Request) {
       typeof insertErr.message === "string" &&
       (/column|schema|relation|does not exist/i.test(insertErr.message) ||
         String(insertErr.code ?? "").startsWith("PGRST"))
-        ? " Base de données : exécute les migrations récentes (ProLead, pièces jointes, brouillon IA)."
+        ? " Base de données : exécute les migrations récentes (ProLead, requesterUserId, pièces jointes, brouillon IA)."
         : "";
     return NextResponse.json(
       { ok: false, error: `Impossible d’enregistrer la demande.${hint}` },
@@ -212,7 +226,7 @@ export async function POST(req: Request) {
         to: proNotifyEmail,
         clientName: fullName,
         prestationLine,
-        demanderEmail: email,
+        demanderEmail: emailStored,
         demanderPhone: phone,
         messageExcerpt,
       }).then((r) => {

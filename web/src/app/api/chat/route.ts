@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 import { getSession } from "@/lib/auth-session";
+import { CHATBOT_ARTISAN_STATIC_REPLY } from "@/lib/chatbot-artisan-static";
 import { logChatbotExchange } from "@/lib/chatbot-log";
 import type { RepairInterventionChoice } from "@/lib/repair-wizard-qcm";
 
@@ -150,6 +151,21 @@ export async function POST(request: Request) {
     priorAnalysis,
   } = parsed;
 
+  const session = await getSession();
+
+  if (choiceId === "artisan") {
+    await logChatbotExchange({
+      clientSessionId,
+      userId: session?.userId ?? null,
+      choiceId: "artisan",
+      step: "simple",
+      userText: null,
+      assistantText: CHATBOT_ARTISAN_STATIC_REPLY,
+      usedVision: false,
+    });
+    return NextResponse.json({ reply: CHATBOT_ARTISAN_STATIC_REPLY, configured: true });
+  }
+
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json({ configured: false }, { status: 503 });
@@ -159,8 +175,6 @@ export async function POST(request: Request) {
   const openai = new OpenAI({ apiKey });
 
   try {
-    const session = await getSession();
-
     if (choiceId === "repair") {
       if (explanation.length > MAX_EXPLANATION) {
         return NextResponse.json({ error: "Texte trop long" }, { status: 400 });

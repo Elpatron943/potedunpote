@@ -17,6 +17,7 @@ import {
   type DiyProjectKind,
   type WizardLevelId,
 } from "@/lib/diy-wizard-qcm";
+import { CHATBOT_ARTISAN_STATIC_REPLY } from "@/lib/chatbot-artisan-static";
 import {
   expandRepairSequence,
   formatRepairWizardForPrompt,
@@ -94,9 +95,7 @@ function replyForChoice(id: ChoiceId): { paragraphs: string[]; cta?: { href: str
   switch (id) {
     case "artisan":
       return {
-        paragraphs: [
-          "Tu es au bon endroit : lance une recherche par métier et lieu (ou par SIREN / raison sociale), puis compare les fiches, les avis et les repères de prix laissés par d’autres clients.",
-        ],
+        paragraphs: [CHATBOT_ARTISAN_STATIC_REPLY],
         cta: { href: "/", label: "Aller à la recherche" },
       };
     case "diy":

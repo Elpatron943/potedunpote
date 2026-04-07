@@ -6,12 +6,16 @@ import type {
   QuoteAccuracy,
   ReviewStatus,
 } from "@/lib/db-enums";
+import { publicReviewPhotoUrl } from "@/lib/review-photo-public-url";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type PublicReviewPayload = {
   id: string;
   siren: string;
   authorId: string;
+  authorPseudo: string | null;
+  photoBeforeUrl: string | null;
+  photoAfterUrl: string | null;
   ratingOverall: number;
   comment: string | null;
   priceBracket: PriceBracket | null;
@@ -79,10 +83,19 @@ export async function getPublishedReviewsForSiren(siren: string): Promise<Public
 
   return reviews.map((row) => {
     const response = responseByReviewId.get(row.id as string) ?? null;
+    const beforeKey = (row as { photoBeforeStorageKey?: string | null }).photoBeforeStorageKey ?? null;
+    const afterKey = (row as { photoAfterStorageKey?: string | null }).photoAfterStorageKey ?? null;
+    const pseudoRaw = (row as { authorPseudo?: string | null }).authorPseudo;
+    const authorPseudo =
+      typeof pseudoRaw === "string" && pseudoRaw.trim() !== "" ? pseudoRaw.trim() : null;
+
     return {
       id: row.id as string,
       siren: row.siren as string,
       authorId: row.authorId as string,
+      authorPseudo,
+      photoBeforeUrl: publicReviewPhotoUrl(beforeKey),
+      photoAfterUrl: publicReviewPhotoUrl(afterKey),
       ratingOverall: row.ratingOverall as number,
       comment: (row.comment as string | null) ?? null,
       priceBracket: (row.priceBracket as PriceBracket | null) ?? null,
@@ -119,6 +132,7 @@ export type AuthorReviewSummary = {
   ratingOverall: number;
   comment: string | null;
   createdAt: Date;
+  authorPseudo: string | null;
   metierId: string | null;
   specialiteId: string | null;
   amountPaidCents: number | null;
@@ -130,7 +144,7 @@ export async function getReviewsByAuthorId(userId: string): Promise<AuthorReview
   const { data: rows, error } = await supabase
     .from("Review")
     .select(
-      "id, siren, status, ratingOverall, comment, createdAt, metierId, specialiteId, amountPaidCents, surfaceM2",
+      "id, siren, status, ratingOverall, comment, createdAt, authorPseudo, metierId, specialiteId, amountPaidCents, surfaceM2",
     )
     .eq("authorId", userId)
     .order("createdAt", { ascending: false });
@@ -143,6 +157,10 @@ export async function getReviewsByAuthorId(userId: string): Promise<AuthorReview
     ratingOverall: row.ratingOverall as number,
     comment: (row.comment as string | null) ?? null,
     createdAt: toDate(row.createdAt as string),
+    authorPseudo:
+      typeof row.authorPseudo === "string" && row.authorPseudo.trim() !== ""
+        ? row.authorPseudo.trim()
+        : null,
     metierId: (row.metierId as string | null) ?? null,
     specialiteId: (row.specialiteId as string | null) ?? null,
     amountPaidCents: (row.amountPaidCents as number | null) ?? null,

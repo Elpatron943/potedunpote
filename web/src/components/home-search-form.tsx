@@ -5,6 +5,14 @@ import type { BtpPriceUnit } from "@/lib/btp-price-unit";
 import { btpPriceUnitShortLabel, isBtpPriceUnit } from "@/lib/btp-price-unit";
 import type { SearchComparablePriceUnit } from "@/lib/search-price-denom";
 import { searchPriceUnitToQueryParam } from "@/lib/search-price-denom";
+import type { ReviewSearchCriteria } from "@/lib/reviews-criteria-filter";
+import {
+  AVAILABILITY_LABELS,
+  DEADLINES_LABELS,
+  PAYMENT_TYPE_LABELS,
+  PRICE_BRACKET_LABELS,
+  QUOTE_ACCURACY_LABELS,
+} from "@/lib/review-labels";
 type MetierOpt = { id: string; label: string };
 type PrestationOpt = { id: string; label: string; priceUnit: BtpPriceUnit };
 
@@ -70,6 +78,7 @@ export function HomeSearchForm({
   defaultRge,
   defaultActs,
   defaultMinStars,
+  defaultReviewCriteria,
   priceFilterParam,
   defaultMaxDenom,
   defaultEntreprise,
@@ -83,6 +92,8 @@ export function HomeSearchForm({
   defaultActs?: string[];
   /** Moyenne minimale des avis publiés (1–5), depuis l’URL (`stars`). */
   defaultMinStars?: number | null;
+  /** Filtres sur les critères détaillés des avis publiés (URL). */
+  defaultReviewCriteria: ReviewSearchCriteria;
   /**
    * Nom du champ query pour le plafond de prix / unité (`pmaxm2`, `pmaxml`, `pmaxm3`, `pmaxunit`)
    * quand toutes les prestations cochées partagent la même unité ; sinon null.
@@ -535,6 +546,105 @@ export function HomeSearchForm({
           s’applique à chaque page de résultats (échantillon élargi à 25 lignes).
         </span>
       </label>
+
+      <fieldset className="space-y-4 rounded-2xl border border-ink/10 bg-canvas/50 p-4 dark:border-white/10 dark:bg-canvas-muted/30">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-ink-soft">
+          Critères d’avis clients{" "}
+          <span className="font-normal normal-case text-ink-soft/80">(optionnel)</span>
+        </legend>
+        <p className="text-xs leading-relaxed text-ink-soft">
+          Même libellés que sur le formulaire d’avis : on garde une entreprise si, pour chaque critère
+          choisi, au moins la moitié des avis <strong className="font-medium text-ink">publiés</strong>{" "}
+          qui ont ce champ rempli indiquent la même réponse.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+              Rapport qualité / prix (ressenti)
+            </span>
+            <select
+              name="priceBracket"
+              defaultValue={defaultReviewCriteria.priceBracket ?? ""}
+              className="w-full cursor-pointer rounded-xl border border-ink/10 bg-canvas/80 py-3 pl-3 pr-3 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+            >
+              <option value="">—</option>
+              {(Object.entries(PRICE_BRACKET_LABELS) as [string, string][]).map(([k, lab]) => (
+                <option key={k} value={k}>
+                  {lab}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+              Délais annoncés
+            </span>
+            <select
+              name="deadlinesKept"
+              defaultValue={defaultReviewCriteria.deadlinesKept ?? ""}
+              className="w-full cursor-pointer rounded-xl border border-ink/10 bg-canvas/80 py-3 pl-3 pr-3 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+            >
+              <option value="">—</option>
+              {(Object.entries(DEADLINES_LABELS) as [string, string][]).map(([k, lab]) => (
+                <option key={k} value={k}>
+                  {lab}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+              Disponibilité / réactivité
+            </span>
+            <select
+              name="availability"
+              defaultValue={defaultReviewCriteria.availability ?? ""}
+              className="w-full cursor-pointer rounded-xl border border-ink/10 bg-canvas/80 py-3 pl-3 pr-3 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+            >
+              <option value="">—</option>
+              {(Object.entries(AVAILABILITY_LABELS) as [string, string][]).map(([k, lab]) => (
+                <option key={k} value={k}>
+                  {lab}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+              Mode de paiement principal
+            </span>
+            <select
+              name="paymentType"
+              defaultValue={defaultReviewCriteria.paymentType ?? ""}
+              className="w-full cursor-pointer rounded-xl border border-ink/10 bg-canvas/80 py-3 pl-3 pr-3 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+            >
+              <option value="">—</option>
+              {(Object.entries(PAYMENT_TYPE_LABELS) as [string, string][]).map(([k, lab]) => (
+                <option key={k} value={k}>
+                  {lab}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="flex flex-col gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Montant payé vs devis initial
+          </span>
+          <select
+            name="quoteVsPaid"
+            defaultValue={defaultReviewCriteria.quoteVsPaid ?? ""}
+            className="w-full cursor-pointer rounded-xl border border-ink/10 bg-canvas/80 py-3 pl-3 pr-3 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+          >
+            <option value="">—</option>
+            {(Object.entries(QUOTE_ACCURACY_LABELS) as [string, string][]).map(([k, lab]) => (
+              <option key={k} value={k}>
+                {lab}
+              </option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
 
       <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-ink/10 bg-canvas/50 p-4 transition hover:border-accent/25 dark:border-white/10 dark:bg-canvas-muted/30">
         <input

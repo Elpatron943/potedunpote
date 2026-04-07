@@ -16,6 +16,12 @@ import { getVerifiedRegisteredSirens } from "@/lib/artisan-verified-sirens";
 import { ContactProButton } from "@/components/contact-pro-button";
 import { searchEntreprisesBtp, searchEntreprisesDirect } from "@/lib/recherche-entreprises";
 import { getPublishedReviewAggregatesBySiren } from "@/lib/reviews-aggregate";
+import {
+  appendReviewCriteriaToSearchParams,
+  filterSirensByReviewCriteriaMajority,
+  hasAnyReviewSearchCriteria,
+  parseReviewSearchCriteriaFromSearchParams,
+} from "@/lib/reviews-criteria-filter";
 import type { SearchComparablePriceUnit } from "@/lib/search-price-denom";
 import {
   getHomogeneousSearchPriceUnit,
@@ -60,6 +66,12 @@ type PageProps = {
     pmaxforfait?: string;
     /** SIREN, SIRET ou dénomination (recherche directe). */
     entreprise?: string;
+    /** Filtres avis : critères détaillés (majorité ≥ 50 % sur les réponses renseignées). */
+    priceBracket?: string;
+    deadlinesKept?: string;
+    availability?: string;
+    paymentType?: string;
+    quoteVsPaid?: string;
   }>;
 };
 
@@ -141,7 +153,9 @@ export default async function HomePage({ searchParams }: PageProps) {
     ? []
     : filterSousActiviteIdsForMetier(btpRef, metierId, parseActParam(sp.act));
   const minStars = parseMinStarsParam(sp.stars);
-  const apiPerPage = minStars != null ? 25 : 12;
+  const reviewCriteria = parseReviewSearchCriteriaFromSearchParams(sp);
+  const reviewCriteriaActive = hasAnyReviewSearchCriteria(reviewCriteria);
+  const apiPerPage = minStars != null || reviewCriteriaActive ? 25 : 12;
 
   const shouldMetierSearch = !shouldDirectSearch && metierId.length > 0 && loc.length > 0;
 
@@ -215,15 +229,28 @@ export default async function HomePage({ searchParams }: PageProps) {
           return a != null && a.count > 0 && a.avgPerDenom <= maxDenomForFilter;
         });
 
+  const criteriaPassSet =
+    reviewCriteriaActive && filteredByMaxDenom.length > 0
+      ? await filterSirensByReviewCriteriaMajority(
+          filteredByMaxDenom.map((e) => e.siren),
+          reviewCriteria,
+        )
+      : null;
+
+  const filteredByReviewCriteria =
+    criteriaPassSet == null
+      ? filteredByMaxDenom
+      : filteredByMaxDenom.filter((e) => criteriaPassSet.has(e.siren));
+
   const sortedFilteredEntreprises =
-    minStars != null
-      ? [...filteredByMaxDenom].sort((a, b) => {
+    minStars != null || reviewCriteriaActive
+      ? [...filteredByReviewCriteria].sort((a, b) => {
           const av = reviewAggregates.get(a.siren)?.avg ?? 0;
           const bv = reviewAggregates.get(b.siren)?.avg ?? 0;
           if (bv !== av) return bv - av;
           return a.nom.localeCompare(b.nom, "fr");
         })
-      : filteredByMaxDenom;
+      : filteredByReviewCriteria;
 
   let verifiedRegisteredSirens = new Set<string>();
   let premiumContactsBySiren = new Map<string, PremiumContactInfo>();
@@ -250,6 +277,7 @@ export default async function HomePage({ searchParams }: PageProps) {
     }
     if (rgeOnly) q.set("rge", "1");
     if (minStars != null) q.set("stars", String(minStars));
+    appendReviewCriteriaToSearchParams(q, reviewCriteria);
     if (!shouldDirectSearch && validatedActs.length > 0 && maxDenomForFilter != null && priceFilterParam) {
       q.set(priceFilterParam, String(maxDenomForFilter));
     }
@@ -311,8 +339,10 @@ export default async function HomePage({ searchParams }: PageProps) {
                 <p className="mt-1 text-sm leading-relaxed text-ink-soft">
                   <strong className="font-medium text-ink">Métier + lieu</strong> (aide à la saisie)
                   ou <strong className="font-medium text-ink">SIREN, SIRET ou raison sociale</strong>
-                  . Filtres optionnels : sous-activités,{" "}
+                  .                   Filtres optionnels : sous-activités,{" "}
                   <strong className="font-medium text-ink">note minimale</strong> (avis publiés),{" "}
+                  <strong className="font-medium text-ink">critères d’avis</strong> (qualité/prix, délais,
+                  disponibilité, paiement, montant vs devis — majorité des réponses),{" "}
                   <strong className="font-medium text-ink">prix moyen par unité max</strong> (m², ml, m³ ou
                   unité si les prestations cochées partagent la même unité),{" "}
                   <strong className="font-medium text-ink">RGE</strong>.
@@ -328,6 +358,7 @@ export default async function HomePage({ searchParams }: PageProps) {
               defaultRge={rgeOnly}
               defaultActs={validatedActs}
               defaultMinStars={minStars}
+              defaultReviewCriteria={reviewCriteria}
               priceFilterParam={priceFilterParam}
               defaultMaxDenom={
                 searchPriceDenom != null ? maxDenomRawForUnit(searchPriceDenom, sp) : ""
@@ -368,16 +399,31 @@ export default async function HomePage({ searchParams }: PageProps) {
                     {minStars != null
                       ? ` · filtre ${minStars}★+ (avis)`
                       : ""}
+                    {reviewCriteriaActive ? " · filtres critères d’avis" : ""}
                     {result.totalPages > 1
                       ? ` · page ${result.page} sur ${result.totalPages}`
                       : ""}
                   </p>
-                  {minStars != null && result.entreprises.length > 0 ? (
+                  {(minStars != null || reviewCriteriaActive) && result.entreprises.length > 0 ? (
                     <p className="mt-2 text-xs leading-relaxed text-ink-soft">
-                      Le filtre par étoiles s’applique aux résultats de cette page (échantillon
-                      élargi à {apiPerPage} entreprises). Sans avis publié ou avec
-                      une moyenne inférieure, l’entreprise est masquée. Passe à la page suivante
-                      pour voir d’autres propositions.
+                      {minStars != null ? (
+                        <>
+                          Le filtre par étoiles s’applique aux résultats de cette page (échantillon
+                          élargi à {apiPerPage} entreprises). Sans avis publié ou avec une moyenne
+                          inférieure, l’entreprise est masquée.
+                        </>
+                      ) : null}
+                      {minStars != null && reviewCriteriaActive ? " " : null}
+                      {reviewCriteriaActive ? (
+                        <>
+                          Les critères détaillés (qualité/prix, délais, etc.) exigent qu’au moins la
+                          moitié des avis publiés ayant le champ renseigné correspondent à ton choix ;
+                          sinon l’entreprise est masquée sur cette page.
+                        </>
+                      ) : null}
+                      {(minStars != null || reviewCriteriaActive) && (
+                        <> Passe à la page suivante pour voir d’autres propositions.</>
+                      )}
                     </p>
                   ) : null}
                 </div>
@@ -385,6 +431,11 @@ export default async function HomePage({ searchParams }: PageProps) {
                   {minStars != null && (
                     <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-950 dark:text-amber-200">
                       Moyenne avis ≥ {minStars}/5
+                    </span>
+                  )}
+                  {reviewCriteriaActive && (
+                    <span className="rounded-full bg-violet-500/20 px-3 py-1 text-xs font-semibold text-violet-950 dark:text-violet-200">
+                      Critères d’avis (majorité)
                     </span>
                   )}
                   {rgeOnly && (
@@ -415,23 +466,50 @@ export default async function HomePage({ searchParams }: PageProps) {
                     </>
                   )}
                 </p>
-              ) : sortedFilteredEntreprises.length === 0 && minStars != null ? (
+              ) : sortedFilteredEntreprises.length === 0 &&
+                (minStars != null || reviewCriteriaActive) ? (
                 <p className="rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] px-6 py-10 text-center text-sm text-ink-soft dark:border-amber-500/25">
-                  Aucune entreprise de <strong className="text-ink">cette page</strong> n’a une
-                  moyenne d’avis publiés d’au moins <strong className="text-ink">{minStars}★</strong>
-                  . Essaie une note plus basse, enlève le filtre, ou consulte la page suivante de
-                  résultats.
+                  Aucune entreprise de <strong className="text-ink">cette page</strong> ne correspond
+                  aux filtres actifs
+                  {minStars != null ? (
+                    <>
+                      {" "}
+                      (moyenne d’avis sous <strong className="text-ink">{minStars}★</strong>
+                      {reviewCriteriaActive ? " ou critères d’avis" : ""})
+                    </>
+                  ) : reviewCriteriaActive ? (
+                    <> (critères d’avis — majorité non atteinte sur les champs concernés)</>
+                  ) : null}
+                  . Adoucis les critères, enlève-les, ou consulte la page suivante de résultats.
                 </p>
               ) : (
                 <>
-                  {minStars != null && sortedFilteredEntreprises.length > 0 ? (
+                  {(minStars != null || reviewCriteriaActive) && sortedFilteredEntreprises.length > 0 ? (
                     <p className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-sm text-ink-soft dark:border-amber-500/25">
                       <span className="font-medium text-ink">
                         {sortedFilteredEntreprises.length} entreprise
                         {sortedFilteredEntreprises.length > 1 ? "s" : ""}
                       </span>{" "}
-                      sur les {result.entreprises.length} de cette page ont une moyenne ≥{" "}
-                      {minStars}★ (tri par note décroissante).
+                      sur les {result.entreprises.length} de cette page
+                      {minStars != null && reviewCriteriaActive ? (
+                        <>
+                          {" "}
+                          ont une moyenne ≥ {minStars}★ et répondent aux critères d’avis choisis
+                          (majorité sur les champs renseignés)
+                        </>
+                      ) : minStars != null ? (
+                        <>
+                          {" "}
+                          ont une moyenne ≥ {minStars}★
+                        </>
+                      ) : (
+                        <>
+                          {" "}
+                          répondent aux critères d’avis choisis (majorité sur les champs renseignés)
+                        </>
+                      )}
+                      {" "}
+                      — tri par note décroissante.
                     </p>
                   ) : null}
                   {validatedActs.length > 0 && (

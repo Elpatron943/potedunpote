@@ -23,6 +23,27 @@ import { parseOptionalPositiveQuantity } from "@/lib/parse-optional-quantity";
 import { parseOptionalSurfaceM2 } from "@/lib/parse-surface-m2";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
+const REVIEW_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+function reviewPhotoMime(m: string): "image/jpeg" | "image/png" | "image/webp" | null {
+  const x = m.toLowerCase().split(";")[0].trim();
+  if (x === "image/jpeg" || x === "image/png" || x === "image/webp") return x;
+  return null;
+}
+
+function parseAuthorPseudo(raw: FormDataEntryValue | null):
+  | { ok: true; value: string }
+  | { ok: false; error: string } {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (s.length < 2) {
+    return { ok: false, error: "Indique un pseudo d’au moins 2 caractères (affiché sur ton avis)." };
+  }
+  if (s.length > 48) {
+    return { ok: false, error: "Pseudo trop long (48 caractères maximum)." };
+  }
+  return { ok: true, value: s.slice(0, 48) };
+}
+
 const PRICE_SET = new Set<string>([
   "UNDER_EXPECTED",
   "AS_EXPECTED",
@@ -73,30 +94,10 @@ export async function submitReview(
   }
 
   const supabase = getSupabaseAdmin();
-  const { data: me, error: meErr } = await supabase
-    .from("User")
-    .select("name")
-    .eq("id", session.userId)
-    .maybeSingle();
-  if (meErr) throw meErr;
 
-  const firstNameRaw = formData.get("firstName");
-  const lastNameRaw = formData.get("lastName");
-  const firstName = typeof firstNameRaw === "string" ? firstNameRaw.trim().slice(0, 80) : "";
-  const lastName = typeof lastNameRaw === "string" ? lastNameRaw.trim().slice(0, 80) : "";
+  const pseudoParsed = parseAuthorPseudo(formData.get("authorPseudo"));
+  if (!pseudoParsed.ok) return { ok: false, error: pseudoParsed.error };
 
-  const hasName = (me?.name ?? "").trim().length > 0;
-  if (!hasName) {
-    if (firstName.length === 0 || lastName.length === 0) {
-      return { ok: false, error: "Renseigne ton prénom et ton nom avant de publier ton avis." };
-    }
-    const displayName = `${firstName} ${lastName}`.replace(/\s+/g, " ").trim();
-    const { error: updErr } = await supabase
-      .from("User")
-      .update({ name: displayName })
-      .eq("id", session.userId);
-    if (updErr) throw updErr;
-  }
   const { data: artisan } = await supabase
     .from("ArtisanProfile")
     .select("siren")
@@ -279,10 +280,66 @@ export async function submitReview(
   const now = new Date().toISOString();
   const id = createId();
 
+  const bucket =
+    (process.env.SUPABASE_REVIEW_PHOTOS_BUCKET ?? "review-photos").trim() || "review-photos";
+
+  async function tryUploadReviewPhoto(
+    fieldName: "photoBefore" | "photoAfter",
+    fileName: "before" | "after",
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    const file = formData.get(fieldName);
+    if (file == null || typeof file === "string" || file.size === 0) {
+      return { ok: true, path: "" };
+    }
+    if (file.size > REVIEW_PHOTO_MAX_BYTES) {
+      return { ok: false, error: `Photo ${fileName === "before" ? "« avant »" : "« après »"} trop volumineuse (max. 5 Mo).` };
+    }
+    const mime = reviewPhotoMime(file.type || "");
+    if (!mime) {
+      return {
+        ok: false,
+        error: `Format de la photo ${fileName === "before" ? "« avant »" : "« après »"} non pris en charge (JPG, PNG ou WebP).`,
+      };
+    }
+    const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+    const objectPath = `reviews/${siren}/${id}/${fileName}.${ext}`;
+    const buf = Buffer.from(await file.arrayBuffer());
+    const { error: upErr } = await supabase.storage.from(bucket).upload(objectPath, buf, {
+      contentType: mime,
+      upsert: false,
+    });
+    if (upErr) {
+      const msg = upErr.message ?? "";
+      if (/bucket|not found|404/i.test(msg)) {
+        return {
+          ok: false,
+          error:
+            "Stockage photos indisponible : crée le bucket Storage public « review-photos » (voir .env.example), ou définis SUPABASE_REVIEW_PHOTOS_BUCKET.",
+        };
+      }
+      return { ok: false, error: "Envoi des photos impossible. Réessaie dans quelques instants." };
+    }
+    return { ok: true, path: objectPath };
+  }
+
+  const upBefore = await tryUploadReviewPhoto("photoBefore", "before");
+  if (!upBefore.ok) return { ok: false, error: upBefore.error };
+  const upAfter = await tryUploadReviewPhoto("photoAfter", "after");
+  if (!upAfter.ok) {
+    if (upBefore.path) await supabase.storage.from(bucket).remove([upBefore.path]);
+    return { ok: false, error: upAfter.error };
+  }
+
+  const photoBeforeStorageKey = upBefore.path || null;
+  const photoAfterStorageKey = upAfter.path || null;
+
   const { error } = await supabase.from("Review").insert({
     id,
     siren,
     authorId: session.userId,
+    authorPseudo: pseudoParsed.value,
+    photoBeforeStorageKey,
+    photoAfterStorageKey,
     ratingOverall: rating,
     comment: commentOut,
     priceBracket: priceBracket ?? null,
@@ -308,6 +365,9 @@ export async function submitReview(
   });
 
   if (error) {
+    const toRemove = [photoBeforeStorageKey, photoAfterStorageKey].filter(Boolean) as string[];
+    if (toRemove.length > 0) await supabase.storage.from(bucket).remove(toRemove);
+
     if (error.code === "23505") {
       return {
         ok: false,
@@ -318,7 +378,7 @@ export async function submitReview(
       return {
         ok: false,
         error:
-          "Sauvegarde impossible : la table Review en base n’a pas toutes les colonnes attendues. Dans Supabase → SQL, exécute les migrations prisma (ex. 20260407120000_btp_prestation_price_unit/migration.sql) ou prisma migrate deploy.",
+          "Sauvegarde impossible : la table Review en base n’a pas toutes les colonnes attendues. Dans Supabase → SQL, exécute les migrations prisma (ex. 20260408190000_review_pseudo_photos/migration.sql).",
       };
     }
     throw error;

@@ -471,7 +471,7 @@ export function EntrepriseFiche({
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-ink">
-                    {authorDisplayName(r.author.name)}
+                    {authorDisplayName(r.authorPseudo ?? r.author.name)}
                   </p>
                   <time className="text-xs text-ink-soft" dateTime={r.createdAt.toISOString()}>
                     {formatReviewDate(r.createdAt)}
@@ -485,6 +485,38 @@ export function EntrepriseFiche({
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-ink">
                     {r.comment}
                   </p>
+                ) : null}
+                {r.photoBeforeUrl || r.photoAfterUrl ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {r.photoBeforeUrl ? (
+                      <figure className="overflow-hidden rounded-xl border border-ink/10 bg-canvas-muted/30 dark:border-white/10">
+                        <figcaption className="border-b border-ink/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-ink-soft dark:border-white/10">
+                          Avant
+                        </figcaption>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={r.photoBeforeUrl}
+                          alt={`Photo avant travaux — ${authorDisplayName(r.authorPseudo ?? r.author.name)}`}
+                          className="h-auto max-h-64 w-full object-cover"
+                          loading="lazy"
+                        />
+                      </figure>
+                    ) : null}
+                    {r.photoAfterUrl ? (
+                      <figure className="overflow-hidden rounded-xl border border-ink/10 bg-canvas-muted/30 dark:border-white/10">
+                        <figcaption className="border-b border-ink/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-ink-soft dark:border-white/10">
+                          Après
+                        </figcaption>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={r.photoAfterUrl}
+                          alt={`Photo après travaux — ${authorDisplayName(r.authorPseudo ?? r.author.name)}`}
+                          className="h-auto max-h-64 w-full object-cover"
+                          loading="lazy"
+                        />
+                      </figure>
+                    ) : null}
+                  </div>
                 ) : null}
                 {prestationLine ? (
                   <p className="mt-2 text-sm text-ink">

@@ -14,10 +14,13 @@ export default async function ProOnboardingPage() {
           Espace professionnel
         </p>
         <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl text-ink">
-          Créer ton profil artisan
+          Associer ton entreprise
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Pour activer les options Pro, on associe ton compte à ton entreprise via ton <strong className="text-ink">SIREN</strong>.
+          Dépose un <strong className="text-ink">Kbis de moins de 3 mois</strong> (mention « À jour au … »
+          lisible), au format image, et indique le <strong className="text-ink">SIREN</strong>. Vérification
+          automatique du document et de la date :{" "}
+          <strong className="text-ink">ton profil Pro n’est créé qu’après validation</strong>.
         </p>
         <p className="mt-3 text-sm text-ink-soft">
           Compte connecté : <span className="font-medium text-ink">{ctx.email}</span>

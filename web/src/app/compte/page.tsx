@@ -150,6 +150,12 @@ export default async function ComptePage() {
                     <StarsRow rating={r.ratingOverall} />
                     <span className="ml-2 text-sm font-medium text-ink-soft">{r.ratingOverall}/5</span>
                   </p>
+                  {r.authorPseudo ? (
+                    <p className="mt-1 text-xs text-ink-soft">
+                      Pseudo sur la fiche :{" "}
+                      <span className="font-medium text-ink">{r.authorPseudo}</span>
+                    </p>
+                  ) : null}
                   {r.comment ? (
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink">{r.comment}</p>
                   ) : null}

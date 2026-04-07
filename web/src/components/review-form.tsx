@@ -47,8 +47,7 @@ export function ReviewForm({
   referentiel: SerializedBtpReferentiel;
 }) {
   const [state, formAction, pending] = useActionState(submitReview, initial);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [authorPseudo, setAuthorPseudo] = useState("");
   const [metierId, setMetierId] = useState("");
   const [specialiteId, setSpecialiteId] = useState("");
   const [amountPaidEuros, setAmountPaidEuros] = useState("");
@@ -101,7 +100,7 @@ export function ReviewForm({
   ]);
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} className="space-y-5" encType="multipart/form-data">
       <input type="hidden" name="siren" value={siren} />
 
       {state.ok === true && (
@@ -121,34 +120,50 @@ export function ReviewForm({
         </p>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block">
+      <label className="block">
+        <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+          Pseudo <span className="text-red-600">*</span>
+        </span>
+        <input
+          name="authorPseudo"
+          autoComplete="nickname"
+          required
+          minLength={2}
+          maxLength={48}
+          value={authorPseudo}
+          onChange={(e) => setAuthorPseudo(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none ring-0 focus:border-teal-500/60 dark:border-white/10"
+          placeholder="Ex. Camille_du_77"
+        />
+        <span className="mt-1 block text-xs text-ink-soft">
+          Ce nom sera affiché sur ton avis public (pas besoin de ton vrai prénom / nom).
+        </span>
+      </label>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
-            Prénom <span className="text-red-600">*</span>
+            Photo avant travaux <span className="font-normal normal-case text-ink-soft/80">(optionnel)</span>
           </span>
           <input
-            name="firstName"
-            autoComplete="given-name"
-            required
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none ring-0 focus:border-teal-500/60 dark:border-white/10"
-            placeholder="Ex. Camille"
+            name="photoBefore"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="text-sm text-ink file:mr-3 file:rounded-lg file:border-0 file:bg-teal-700 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-teal-800 dark:file:bg-teal-600"
           />
+          <span className="text-xs text-ink-soft">JPG, PNG ou WebP — max. 5 Mo.</span>
         </label>
-        <label className="block">
+        <label className="flex flex-col gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
-            Nom <span className="text-red-600">*</span>
+            Photo après travaux <span className="font-normal normal-case text-ink-soft/80">(optionnel)</span>
           </span>
           <input
-            name="lastName"
-            autoComplete="family-name"
-            required
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-ink/15 bg-[var(--card)] px-3 py-2 text-sm text-ink outline-none ring-0 focus:border-teal-500/60 dark:border-white/10"
-            placeholder="Ex. Martin"
+            name="photoAfter"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="text-sm text-ink file:mr-3 file:rounded-lg file:border-0 file:bg-teal-700 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-teal-800 dark:file:bg-teal-600"
           />
+          <span className="text-xs text-ink-soft">JPG, PNG ou WebP — max. 5 Mo.</span>
         </label>
       </div>
 

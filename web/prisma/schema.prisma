@@ -75,6 +75,8 @@ model User {
   artisanProfile ArtisanProfile?
   reviews        Review[]
   chatbotLogs    ChatbotLog[]
+  /// Dépôts Kbis soumis avant association SIREN (statut APPROVED / REJECTED).
+  proKbisVerifications ProKbisVerification[]
 }
 
 /// Inscription en attente : mot de passe déjà hashé, code OTP envoyé par e-mail (une ligne par e-mail).
@@ -152,6 +154,28 @@ model DiyKnowledgeArticle {
   @@index([createdAt])
 }
 
+/// Dépôt Kbis + résultat de la vérification IA (SIREN document vs déclaré).
+model ProKbisVerification {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  declaredSiren    String
+  storagePath      String
+  /// APPROVED | REJECTED
+  status           String
+  aiExtractedSiren String?
+  aiConfidence     String?
+  aiNotes          String?  @db.Text
+  /// Date « À jour au … » lue sur le document (YYYY-MM-DD).
+  kbisExtractDate  String?
+  rejectionReason  String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
 /// Compte revendiqué par un artisan (lié au SIREN) — options premium Stripe plus tard
 model ArtisanProfile {
   id           String    @id @default(cuid())
@@ -182,6 +206,12 @@ model Review {
   siren         String
   authorId      String
   author        User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  /// Pseudo affiché sur l’avis (saisi au dépôt).
+  authorPseudo  String?
+  /// Clé Storage (bucket public) — image « avant travaux ».
+  photoBeforeStorageKey String?
+  /// Clé Storage — image « après travaux ».
+  photoAfterStorageKey  String?
   ratingOverall Int
   comment       String?
   priceBracket  PriceBracket?

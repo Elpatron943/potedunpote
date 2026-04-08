@@ -29,3 +29,21 @@ export async function resolveQuoteRecipientEmail(supabase: SupabaseClient, proj:
   }
   return parseClientEmailField(proj.clientEmail);
 }
+
+/** Variante : résout directement depuis une demande (lead). */
+export async function resolveRecipientEmailFromLeadId(
+  supabase: SupabaseClient,
+  leadIdRaw: unknown,
+): Promise<string | null> {
+  const leadId = typeof leadIdRaw === "string" ? leadIdRaw.trim() : "";
+  if (!leadId) return null;
+  const { data: lead } = await supabase.from("ProLead").select("email,requesterUserId").eq("id", leadId).maybeSingle();
+  if (!lead) return null;
+  const uid = lead.requesterUserId as string | null | undefined;
+  if (uid) {
+    const { data: user } = await supabase.from("User").select("email").eq("id", uid).maybeSingle();
+    const fromUser = parseClientEmailField(user?.email);
+    if (fromUser) return fromUser;
+  }
+  return parseClientEmailField(lead.email);
+}

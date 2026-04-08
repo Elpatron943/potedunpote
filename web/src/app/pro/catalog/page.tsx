@@ -44,6 +44,10 @@ export default async function ProCatalogPage() {
           <Link href="/pro/tableau" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
             Tableau de bord
           </Link>
+          {" · "}
+          <Link href="/pro/profils-mo" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+            Profils temps
+          </Link>
         </p>
 
         <header className="border-b border-ink/10 pb-6 dark:border-white/10">

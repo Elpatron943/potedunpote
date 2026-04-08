@@ -208,6 +208,7 @@ model ArtisanProfile {
   leads         ProLead[]
   projects      ProProject[]
   catalogItems  ProCatalogItem[]
+  laborProfiles ProLaborProfile[]
 }
 
 /// Demandes entrantes (Pro Relation+)
@@ -279,6 +280,21 @@ model ProLeadAiDraft {
   @@index([leadId])
 }
 
+/// Profils temps / main d’œuvre interne (TJM coût journalier) — personnalisables par l’artisan.
+model ProLaborProfile {
+  id               String   @id @default(cuid())
+  siren            String
+  artisan          ArtisanProfile @relation(fields: [siren], references: [siren], onDelete: Cascade)
+  label            String
+  internalTjmCents Int
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  timeEntries      ProTimeEntry[]
+
+  @@index([siren])
+}
+
 /// Pilotage (Pro Pilotage) : chantier / projet interne
 model ProProject {
   id        String   @id @default(cuid())
@@ -291,6 +307,8 @@ model ProProject {
   sourceLead   ProLead? @relation(fields: [sourceLeadId], references: [id], onDelete: SetNull)
   /// Pour envoyer les devis par e-mail au client.
   clientEmail  String?
+  /// Ressources internes : TJM (coût journalier) pour valoriser les heures saisies.
+  internalTjmCents Int?
   status    String   @default("OPEN")
   notes     String?  @db.Text
   createdAt DateTime @default(now())
@@ -307,8 +325,12 @@ model ProProject {
 
 model ProQuote {
   id        String   @id @default(cuid())
-  projectId String
-  project   ProProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// Chantier (optionnel tant que le devis n’est pas accepté / rattaché).
+  projectId String?
+  project   ProProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// Demande entrante à l’origine du devis (optionnel).
+  leadId    String?
+  lead      ProLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
   number    String
   /// DRAFT | SENT | ACCEPTED (commande) | INVOICED | CANCELLED
   status    String   @default("DRAFT")
@@ -326,6 +348,7 @@ model ProQuote {
   invoicesFromQuote ProInvoice[] @relation("InvoiceFromQuote")
 
   @@index([projectId])
+  @@index([leadId])
 }
 
 model ProInvoice {
@@ -352,6 +375,8 @@ model ProTimeEntry {
   id        String   @id @default(cuid())
   projectId String
   project   ProProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  laborProfileId String?
+  laborProfile   ProLaborProfile? @relation(fields: [laborProfileId], references: [id], onDelete: SetNull)
   minutes   Int
   workDate  DateTime @db.Date
   note      String?  @db.Text
@@ -359,6 +384,7 @@ model ProTimeEntry {
 
   @@index([projectId])
   @@index([workDate])
+  @@index([laborProfileId])
 }
 
 model ProExpense {

@@ -6,14 +6,8 @@ import { requireProContext } from "@/lib/pro-auth";
 import { hasPlanAtLeast } from "@/lib/pro-plan";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-const LEAD_STATUSES = ["NEW", "IN_PROGRESS", "CLOSED", "ARCHIVED"] as const;
-type LeadStatus = (typeof LEAD_STATUSES)[number];
-
-function parseLeadStatus(raw: string): LeadStatus | null {
-  return LEAD_STATUSES.includes(raw as LeadStatus) ? (raw as LeadStatus) : null;
-}
-
-export async function proUpdateLeadStatusAction(
+/** Refus explicite de la demande : archivage (sans action sur les devis existants). */
+export async function declineIncomingLeadAction(
   _prev: { ok: boolean; error?: string } | null,
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -25,27 +19,30 @@ export async function proUpdateLeadStatusAction(
   }
 
   const leadId = String(formData.get("leadId") ?? "").trim();
-  const status = parseLeadStatus(String(formData.get("status") ?? "").trim());
-  if (!leadId || !status) return { ok: false, error: "Données invalides." };
+  if (!leadId) return { ok: false, error: "Demande invalide." };
 
   const supabase = getSupabaseAdmin();
   const { data: lead, error: fetchErr } = await supabase
     .from("ProLead")
-    .select("id,siren")
+    .select("id,siren,status")
     .eq("id", leadId)
     .maybeSingle();
   if (fetchErr || !lead || (lead.siren as string) !== ctx.artisanProfile.siren) {
     return { ok: false, error: "Demande introuvable." };
   }
 
+  const st = String((lead.status as string | undefined) ?? "NEW");
+  if (st === "ARCHIVED") return { ok: true };
+
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("ProLead")
-    .update({ status, updatedAt: now })
+    .update({ status: "ARCHIVED", updatedAt: now })
     .eq("id", leadId)
     .eq("siren", ctx.artisanProfile.siren);
   if (error) return { ok: false, error: "Mise à jour impossible." };
 
   revalidatePath("/pro/demandes");
+  revalidatePath("/pro/tableau");
   return { ok: true };
 }

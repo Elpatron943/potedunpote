@@ -17,6 +17,7 @@ import { InvoiceCreateForm } from "./invoice-create-form";
 import { InvoiceStatusForm } from "./invoice-status-form";
 import { TimeCreateForm } from "./time-create-form";
 import { ExpenseCreateForm } from "./expense-create-form";
+import { InternalTjmForm } from "./internal-tjm-form";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -54,6 +55,38 @@ function formatDurationMinutes(totalMin: number): string {
   return `${h} h ${m} min`;
 }
 
+function laborCostCentsForMinutes(minutes: number, tjmCents: number): number {
+  const hours = Math.max(0, minutes) / 60;
+  const hourly = tjmCents / 8; // 8 h = 1 jour
+  return Math.round(hours * hourly);
+}
+
+function sumTimeEntriesLaborCents(
+  entries: { minutes?: unknown; laborProfileId?: unknown }[],
+  profileTjmById: Map<string, number>,
+  projectTjmCents: number | null,
+): number | null {
+  let sum = 0;
+  let counted = false;
+  for (const e of entries) {
+    const m = typeof e.minutes === "number" ? e.minutes : 0;
+    const pid = typeof e.laborProfileId === "string" && e.laborProfileId.trim() ? e.laborProfileId.trim() : null;
+    let tjm: number | null = null;
+    if (pid && profileTjmById.has(pid)) {
+      const v = profileTjmById.get(pid)!;
+      if (v > 0) tjm = v;
+    }
+    if (tjm == null && projectTjmCents != null && projectTjmCents > 0) {
+      tjm = projectTjmCents;
+    }
+    if (tjm != null && tjm > 0) {
+      sum += laborCostCentsForMinutes(m, tjm);
+      counted = true;
+    }
+  }
+  return counted ? sum : null;
+}
+
 function quoteStatusLabel(status: string): string {
   switch (status) {
     case "DRAFT":
@@ -66,6 +99,8 @@ function quoteStatusLabel(status: string): string {
       return "Facturé";
     case "CANCELLED":
       return "Annulé";
+    case "ARCHIVED":
+      return "Archivé";
     default:
       return status || "Brouillon";
   }
@@ -94,7 +129,7 @@ function quoteStatusRaw(q: Record<string, unknown>): string {
 }
 
 function isDevisTabQuote(st: string): boolean {
-  return st === "DRAFT" || st === "SENT" || st === "CANCELLED";
+  return st === "DRAFT" || st === "SENT" || st === "CANCELLED" || st === "ARCHIVED";
 }
 
 function isCommandeTabQuote(st: string): boolean {
@@ -129,10 +164,14 @@ export default async function ProChantierDetailPage({
     clientEmail: proj.clientEmail as string | null | undefined,
   });
 
-  const [quotes, invoices, timeEntries, expenses, catalogRes] = await Promise.all([
+  const [quotes, invoices, timeEntries, expenses, catalogRes, laborProfilesRes] = await Promise.all([
     supabase.from("ProQuote").select("*").eq("projectId", id).order("createdAt", { ascending: false }),
     supabase.from("ProInvoice").select("*").eq("projectId", id).order("createdAt", { ascending: false }),
-    supabase.from("ProTimeEntry").select("id,minutes,workDate,note,createdAt").eq("projectId", id).order("createdAt", { ascending: false }),
+    supabase
+      .from("ProTimeEntry")
+      .select("id,minutes,workDate,note,createdAt,laborProfileId")
+      .eq("projectId", id)
+      .order("createdAt", { ascending: false }),
     supabase.from("ProExpense").select("id,label,amountCents,category,expenseDate,note,createdAt").eq("projectId", id).order("createdAt", { ascending: false }),
     supabase
       .from("ProCatalogItem")
@@ -141,6 +180,12 @@ export default async function ProChantierDetailPage({
       .order("sortOrder", { ascending: true })
       .order("createdAt", { ascending: false })
       .limit(500),
+    supabase
+      .from("ProLaborProfile")
+      .select("id,label,internalTjmCents,sortOrder,createdAt")
+      .eq("siren", ctx.artisanProfile.siren)
+      .order("sortOrder", { ascending: true })
+      .order("createdAt", { ascending: true }),
   ]);
 
   const catalogItems: ProCatalogPickerItem[] = (catalogRes.error ? [] : (catalogRes.data ?? []))
@@ -168,6 +213,14 @@ export default async function ProChantierDetailPage({
   const iRows = (invoices.data ?? []) as Record<string, unknown>[];
   const tRows = timeEntries.data ?? [];
   const eRows = expenses.data ?? [];
+  const laborProfileRows = (!laborProfilesRes.error && laborProfilesRes.data ? laborProfilesRes.data : []) as {
+    id: string;
+    label: string;
+    internalTjmCents: number;
+  }[];
+  const profileTjmById = new Map(laborProfileRows.map((p) => [p.id, p.internalTjmCents]));
+  const profileLabelById = new Map(laborProfileRows.map((p) => [p.id, p.label]));
+  const laborProfileOptions = laborProfileRows.map((p) => ({ id: p.id, label: p.label }));
 
   const quotesDevis = qRows.filter((q) => isDevisTabQuote(quoteStatusRaw(q)));
   const quotesCommande = qRows.filter((q) => isCommandeTabQuote(quoteStatusRaw(q)));
@@ -176,8 +229,12 @@ export default async function ProChantierDetailPage({
   const paidCents = sumCentsInvoicesPaid(iRows);
   const expenseCents = sumCentsExpenses(eRows);
   const totalMinutes = sumMinutes(tRows);
+  const internalTjmCents = typeof (proj as { internalTjmCents?: unknown }).internalTjmCents === "number" ? (proj as { internalTjmCents?: number }).internalTjmCents! : null;
+  const internalLaborCents = sumTimeEntriesLaborCents(tRows, profileTjmById, internalTjmCents);
   const marginOnPaid = paidCents - expenseCents;
   const marginOnBilled = billedCents - expenseCents;
+  const marginOnPaidAfterLabor = internalLaborCents == null ? null : paidCents - expenseCents - internalLaborCents;
+  const marginOnBilledAfterLabor = internalLaborCents == null ? null : billedCents - expenseCents - internalLaborCents;
 
   function invoiceLinkedToQuote(quoteId: string): Record<string, unknown> | undefined {
     return iRows.find((inv) => String(inv.sourceQuoteId ?? "") === quoteId);
@@ -193,6 +250,10 @@ export default async function ProChantierDetailPage({
           {" · "}
           <Link href="/pro/catalog" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
             Catalogue devis
+          </Link>
+          {" · "}
+          <Link href="/pro/profils-mo" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+            Profils temps
           </Link>
         </p>
 
@@ -251,8 +312,15 @@ export default async function ProChantierDetailPage({
           <h2 className="text-base font-semibold text-ink">Synthèse rentabilité</h2>
           <p className="mt-1 text-xs text-ink-soft">
             Basé sur les factures (hors brouillon) et les dépenses du chantier. Le CA encaissé inclut uniquement les factures au statut{" "}
-            <span className="font-mono">PAID</span>.
+            <span className="font-mono">PAID</span>. Le coût MO utilise le profil choisi sur chaque saisie de temps, sinon le TJM du chantier (
+            <Link href="/pro/profils-mo" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+              profils personnalisables
+            </Link>
+            ).
           </p>
+          <div className="mt-4 rounded-xl border border-ink/10 bg-[var(--card)] p-4 dark:border-white/10">
+            <InternalTjmForm projectId={id} defaultInternalTjmCents={internalTjmCents} />
+          </div>
           <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-ink/10 bg-[var(--card)] px-3 py-2.5 dark:border-white/10">
               <dt className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">CA facturé</dt>
@@ -278,6 +346,26 @@ export default async function ProChantierDetailPage({
               <dt className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Marge (facturé − dépenses)</dt>
               <dd className="mt-0.5 font-semibold tabular-nums text-ink">{formatEurFromCents(marginOnBilled)}</dd>
             </div>
+            {internalLaborCents != null ? (
+              <>
+                <div className="rounded-xl border border-ink/10 bg-[var(--card)] px-3 py-2.5 sm:col-span-2 dark:border-white/10">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Coût main d’œuvre interne (estim.)</dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums text-ink">{formatEurFromCents(internalLaborCents)}</dd>
+                </div>
+                <div className="rounded-xl border border-ink/10 bg-[var(--card)] px-3 py-2.5 sm:col-span-2 dark:border-white/10">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+                    Marge (encaissé − dépenses − MO)
+                  </dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums text-ink">{formatEurFromCents(marginOnPaidAfterLabor ?? 0)}</dd>
+                </div>
+                <div className="rounded-xl border border-ink/10 bg-[var(--card)] px-3 py-2.5 sm:col-span-2 dark:border-white/10">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+                    Marge (facturé − dépenses − MO)
+                  </dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums text-ink">{formatEurFromCents(marginOnBilledAfterLabor ?? 0)}</dd>
+                </div>
+              </>
+            ) : null}
           </dl>
         </section>
 
@@ -441,9 +529,14 @@ export default async function ProChantierDetailPage({
         <div className="grid gap-6 lg:grid-cols-2">
           <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm dark:border-white/10">
             <h2 className="text-lg font-semibold text-ink">Temps</h2>
+            <p className="mt-1 text-xs text-ink-soft">
+              <Link href="/pro/profils-mo" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+                Gérer les profils et les TJM internes
+              </Link>
+            </p>
             <div className="mt-4">
               <Suspense fallback={<div className="h-20 animate-pulse rounded-xl bg-canvas-muted/30" />}>
-                <TimeCreateForm projectId={id} />
+                <TimeCreateForm projectId={id} laborProfiles={laborProfileOptions} />
               </Suspense>
             </div>
             {tRows.length === 0 ? (
@@ -459,6 +552,15 @@ export default async function ProChantierDetailPage({
                       <span className="font-semibold text-ink">{t.workDate as string}</span>
                       <span className="text-ink-soft">{t.minutes as number} min</span>
                     </div>
+                    {(() => {
+                      const lid = typeof t.laborProfileId === "string" ? t.laborProfileId : null;
+                      const pl = lid ? profileLabelById.get(lid) : null;
+                      return pl ? (
+                        <p className="mt-1 text-xs font-medium text-violet-800 dark:text-violet-200">Profil : {pl}</p>
+                      ) : (
+                        <p className="mt-1 text-xs text-ink-soft">Profil : TJM chantier (défaut)</p>
+                      );
+                    })()}
                     {(t.note as string | null) ? <p className="mt-1 text-xs text-ink-soft">{t.note as string}</p> : null}
                   </li>
                 ))}

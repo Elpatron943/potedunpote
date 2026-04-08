@@ -70,7 +70,7 @@ export function leadStatusLabelForBuyer(status: string): string {
     case "CLOSED":
       return "Clôturée";
     case "ARCHIVED":
-      return "Archivée";
+      return "Dossier archivé (commande ou clôture)";
     default:
       return status || "—";
   }

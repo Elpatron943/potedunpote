@@ -31,6 +31,12 @@ export default async function CompteLayout({ children }: { children: React.React
               Vue d’ensemble
             </Link>
             <Link
+              href="/compte/parametres"
+              className="rounded-lg px-3 py-2 text-white/75 transition hover:bg-white/10 hover:text-white"
+            >
+              Paramètres
+            </Link>
+            <Link
               href="/compte/demandes"
               className="rounded-lg px-3 py-2 text-white/75 transition hover:bg-white/10 hover:text-white"
             >

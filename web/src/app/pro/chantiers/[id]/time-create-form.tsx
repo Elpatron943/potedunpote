@@ -5,7 +5,15 @@ import { addTimeEntryAction } from "../pilotage.actions";
 
 const initial: { ok: boolean; error?: string } | null = null;
 
-export function TimeCreateForm({ projectId }: { projectId: string }) {
+export type LaborProfileOption = { id: string; label: string };
+
+export function TimeCreateForm({
+  projectId,
+  laborProfiles = [],
+}: {
+  projectId: string;
+  laborProfiles?: LaborProfileOption[];
+}) {
   const [state, formAction, pending] = useActionState(addTimeEntryAction, initial);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -22,16 +30,30 @@ export function TimeCreateForm({ projectId }: { projectId: string }) {
           Temps ajouté.
         </p>
       ) : null}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 sm:col-span-1">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">Date</span>
           <input type="date" name="workDate" defaultValue={today} className="rounded-lg border border-ink/10 bg-canvas/80 px-3 py-2 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40" />
         </label>
-        <label className="flex flex-col gap-1 sm:col-span-1">
+        <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">Minutes</span>
           <input name="minutes" inputMode="numeric" required className="rounded-lg border border-ink/10 bg-canvas/80 px-3 py-2 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40" placeholder="ex. 90" />
         </label>
-        <label className="flex flex-col gap-1 sm:col-span-1">
+        <label className="flex flex-col gap-1 lg:col-span-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">Profil (TJM)</span>
+          <select
+            name="laborProfileId"
+            className="rounded-lg border border-ink/10 bg-canvas/80 px-3 py-2 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40"
+          >
+            <option value="">TJM du chantier (défaut)</option>
+            {laborProfiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 sm:col-span-2 lg:col-span-1">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">Note</span>
           <input name="note" className="rounded-lg border border-ink/10 bg-canvas/80 px-3 py-2 text-sm text-ink dark:border-white/10 dark:bg-canvas-muted/40" placeholder="ex. Pose / déplacement" />
         </label>

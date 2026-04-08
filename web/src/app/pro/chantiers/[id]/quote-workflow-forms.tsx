@@ -7,6 +7,7 @@ import {
   createInvoiceFromQuoteAction,
   sendQuoteToClientAction,
 } from "../pilotage.actions";
+import { QuoteCloseForms } from "../quote-close-forms";
 
 const initial: { ok: boolean; error?: string } | null = null;
 
@@ -100,6 +101,7 @@ export function QuoteDevisWorkflow({ projectId, quoteId, status }: { projectId: 
     <div className="mt-2 border-t border-ink/10 pt-3 dark:border-white/10">
       {(st === "DRAFT" || st === "SENT") && <SendQuoteForm projectId={projectId} quoteId={quoteId} />}
       {st === "SENT" && <AcceptQuoteForm projectId={projectId} quoteId={quoteId} />}
+      {(st === "DRAFT" || st === "SENT") && <QuoteCloseForms quoteId={quoteId} projectId={projectId} />}
     </div>
   );
 }

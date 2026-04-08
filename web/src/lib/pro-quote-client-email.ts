@@ -125,7 +125,19 @@ export async function sendProQuoteToClientEmail(params: {
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
     console.error("[pro-quote-client-email]", res.status, errText);
-    return { ok: false, message: "Échec envoi e-mail (Resend)." };
+
+    // Message le plus fréquent en dev : domaine non vérifié / mode test.
+    if (res.status === 403 && /testing emails|verify a domain/i.test(errText)) {
+      return {
+        ok: false,
+        message:
+          "Envoi bloqué par Resend (mode test). Vérifie un domaine dans Resend, puis configure RESEND_FROM_EMAIL avec une adresse de ce domaine.",
+      };
+    }
+
+    // Sinon on remonte un extrait utile (sans spammer toute la réponse).
+    const compact = errText.trim().slice(0, 240);
+    return { ok: false, message: compact ? `Échec Resend: ${compact}` : "Échec envoi e-mail (Resend)." };
   }
 
   return { ok: true };

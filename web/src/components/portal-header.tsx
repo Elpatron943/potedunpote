@@ -29,9 +29,11 @@ export function PortalHeader({ info }: { info: PortalSessionInfo }) {
         </div>
 
         <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-0.5 sm:gap-1" aria-label="Portail connecté">
-          <Link href="/" className={navLink}>
-            Recherche
-          </Link>
+          {info.hasArtisanProfile ? null : (
+            <Link href="/" className={navLink}>
+              Recherche
+            </Link>
+          )}
           <Link href="/compte" className={navLink}>
             Mon compte
           </Link>
@@ -60,6 +62,9 @@ export function PortalHeader({ info }: { info: PortalSessionInfo }) {
                 <Link href="/compte" className={menuItem}>
                   Mon compte acheteur
                 </Link>
+                <Link href="/compte/parametres" className={menuItem}>
+                  Paramètres (acheteur)
+                </Link>
                 <Link href="/pro/tableau" className={menuItem}>
                   Tableau de bord pro
                 </Link>
@@ -72,9 +77,6 @@ export function PortalHeader({ info }: { info: PortalSessionInfo }) {
                     Profil artisan (à compléter)
                   </Link>
                 )}
-                <Link href="/pro/offre" className={menuItem}>
-                  Offre &amp; abonnement
-                </Link>
               </div>
               <div className={menuSection}>
                 <form action={logoutAction}>

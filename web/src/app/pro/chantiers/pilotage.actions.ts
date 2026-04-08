@@ -13,7 +13,15 @@ import { aiSuggestedLinesToQuoteLinesJson, buildChantierNotesFromLead } from "@/
 import { requireProContext } from "@/lib/pro-auth";
 import { hasPlanAtLeast } from "@/lib/pro-plan";
 import { parseOptionalAmountEurosToCents } from "@/lib/parse-amount-euros";
-import { parseClientEmailField, resolveQuoteRecipientEmail } from "@/lib/pro-quote-recipient";
+import {
+  parseClientEmailField,
+  resolveQuoteRecipientEmail,
+  resolveRecipientEmailFromLeadId,
+} from "@/lib/pro-quote-recipient";
+import {
+  archiveLeadFromQuoteBinding,
+  markLeadInProgressAfterQuoteSent,
+} from "@/lib/pro-lead-pipeline";
 import { sendProQuoteToClientEmail } from "@/lib/pro-quote-client-email";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -316,6 +324,8 @@ export async function addTimeEntryAction(_prev: { ok: boolean; error?: string } 
   const workDate = String(formData.get("workDate") ?? "").trim();
   const noteRaw = String(formData.get("note") ?? "").trim();
   const note = noteRaw ? noteRaw.slice(0, 2000) : null;
+  const laborProfileIdRaw = String(formData.get("laborProfileId") ?? "").trim();
+  const laborProfileId = laborProfileIdRaw.length > 0 ? laborProfileIdRaw.slice(0, 80) : null;
   if (!projectId) return { ok: false, error: "Projet invalide." };
   if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 24 * 60) {
     return { ok: false, error: "Durée invalide (minutes)." };
@@ -326,14 +336,24 @@ export async function addTimeEntryAction(_prev: { ok: boolean; error?: string } 
   const { data: proj } = await supabase.from("ProProject").select("id,siren").eq("id", projectId).maybeSingle();
   if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
 
-  const { error } = await supabase.from("ProTimeEntry").insert({
+  if (laborProfileId) {
+    const { data: prof } = await supabase.from("ProLaborProfile").select("id,siren").eq("id", laborProfileId).maybeSingle();
+    if (!prof || (prof.siren as string) !== ctx.artisanProfile!.siren) {
+      return { ok: false, error: "Profil temps invalide." };
+    }
+  }
+
+  const row: Record<string, unknown> = {
     id: createId(),
     projectId,
     minutes,
     workDate,
     note,
     createdAt: new Date().toISOString(),
-  });
+  };
+  if (laborProfileId) row.laborProfileId = laborProfileId;
+
+  const { error } = await supabase.from("ProTimeEntry").insert(row);
   if (error) return { ok: false, error: "Ajout temps impossible." };
   revalidatePath(`/pro/chantiers/${projectId}`);
   return { ok: true };
@@ -377,6 +397,130 @@ export async function addExpenseAction(_prev: { ok: boolean; error?: string } | 
   return { ok: true };
 }
 
+function parseOptionalTjmEurosToCents(raw: FormDataEntryValue | null): { ok: true; cents: number | null } | { ok: false; error: string } {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s) return { ok: true, cents: null };
+  const normalized = s.replace(/\s/g, "").replace(",", ".");
+  const v = Number(normalized);
+  if (!Number.isFinite(v) || v < 0) return { ok: false, error: "TJM invalide." };
+  if (v > 99999) return { ok: false, error: "TJM trop élevé." };
+  return { ok: true, cents: Math.round(v * 100) };
+}
+
+export async function updateProjectInternalTjmAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  if (!projectId) return { ok: false, error: "Projet invalide." };
+
+  const parsed = parseOptionalTjmEurosToCents(formData.get("internalTjmEuros"));
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+
+  const supabase = getSupabaseAdmin();
+  const { data: proj } = await supabase.from("ProProject").select("id,siren").eq("id", projectId).maybeSingle();
+  if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("ProProject")
+    .update({ internalTjmCents: parsed.cents, updatedAt: now })
+    .eq("id", projectId);
+  if (error) return { ok: false, error: "Enregistrement impossible." };
+
+  revalidatePath(`/pro/chantiers/${projectId}`);
+  return { ok: true };
+}
+
+function parseRequiredTjmEurosToCents(raw: FormDataEntryValue | null): { ok: true; cents: number } | { ok: false; error: string } {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s) return { ok: false, error: "TJM requis." };
+  const normalized = s.replace(/\s/g, "").replace(",", ".");
+  const v = Number(normalized);
+  if (!Number.isFinite(v) || v <= 0) return { ok: false, error: "TJM invalide." };
+  if (v > 99999) return { ok: false, error: "TJM trop élevé." };
+  return { ok: true, cents: Math.round(v * 100) };
+}
+
+export async function createLaborProfileAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const label = String(formData.get("label") ?? "").trim().slice(0, 80);
+  if (label.length < 1) return { ok: false, error: "Libellé requis." };
+  const tjm = parseRequiredTjmEurosToCents(formData.get("internalTjmEuros"));
+  if (!tjm.ok) return { ok: false, error: tjm.error };
+
+  const supabase = getSupabaseAdmin();
+  const siren = ctx.artisanProfile!.siren;
+  const { count } = await supabase.from("ProLaborProfile").select("id", { count: "exact", head: true }).eq("siren", siren);
+  const sortOrder = typeof count === "number" ? count : 0;
+  const now = new Date().toISOString();
+  const id = createId();
+  const { error } = await supabase.from("ProLaborProfile").insert({
+    id,
+    siren,
+    label,
+    internalTjmCents: tjm.cents,
+    sortOrder,
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (error) return { ok: false, error: "Création impossible." };
+  revalidatePath("/pro/profils-mo");
+  return { ok: true };
+}
+
+export async function updateLaborProfileAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const profileId = String(formData.get("profileId") ?? "").trim();
+  const label = String(formData.get("label") ?? "").trim().slice(0, 80);
+  if (!profileId) return { ok: false, error: "Profil invalide." };
+  if (label.length < 1) return { ok: false, error: "Libellé requis." };
+  const tjm = parseRequiredTjmEurosToCents(formData.get("internalTjmEuros"));
+  if (!tjm.ok) return { ok: false, error: tjm.error };
+
+  const supabase = getSupabaseAdmin();
+  const { data: row } = await supabase.from("ProLaborProfile").select("id,siren").eq("id", profileId).maybeSingle();
+  if (!row || (row.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("ProLaborProfile")
+    .update({ label, internalTjmCents: tjm.cents, updatedAt: now })
+    .eq("id", profileId);
+  if (error) return { ok: false, error: "Mise à jour impossible." };
+  revalidatePath("/pro/profils-mo");
+  return { ok: true };
+}
+
+export async function deleteLaborProfileAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const profileId = String(formData.get("profileId") ?? "").trim();
+  if (!profileId) return { ok: false, error: "Profil invalide." };
+
+  const supabase = getSupabaseAdmin();
+  const { data: row } = await supabase.from("ProLaborProfile").select("id,siren").eq("id", profileId).maybeSingle();
+  if (!row || (row.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+
+  const { error } = await supabase.from("ProLaborProfile").delete().eq("id", profileId);
+  if (error) return { ok: false, error: "Suppression impossible." };
+  revalidatePath("/pro/profils-mo");
+  return { ok: true };
+}
+
 export async function updateProjectClientEmailAction(
   _prev: { ok: boolean; error?: string } | null,
   formData: FormData,
@@ -405,30 +549,47 @@ export async function sendQuoteToClientAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const ctx = await requireProContext();
   requirePilotage(ctx);
-  const projectId = String(formData.get("projectId") ?? "").trim();
   const quoteId = String(formData.get("quoteId") ?? "").trim();
-  if (!projectId || !quoteId) return { ok: false, error: "Données invalides." };
+  const projectId = String(formData.get("projectId") ?? "").trim() || null;
+  if (!quoteId) return { ok: false, error: "Données invalides." };
 
   const supabase = getSupabaseAdmin();
-  const { data: proj } = await supabase.from("ProProject").select("*").eq("id", projectId).maybeSingle();
-  if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
-
   const { data: q } = await supabase
     .from("ProQuote")
-    .select("id,projectId,number,status,totalCents,linesJson,issuedAt")
+    .select("id,projectId,leadId,number,status,totalCents,linesJson,issuedAt")
     .eq("id", quoteId)
     .maybeSingle();
-  if (!q || (q.projectId as string) !== projectId) return { ok: false, error: "Devis introuvable." };
+  if (!q) return { ok: false, error: "Devis introuvable." };
+  const qProjectId = (q.projectId as string | null | undefined) ?? null;
+  if (qProjectId && projectId && qProjectId !== projectId) return { ok: false, error: "Devis introuvable." };
 
   const status = String(q.status ?? "DRAFT");
   if (!QUOTE_STATUSES_SEND.has(status)) {
     return { ok: false, error: "Seul un devis en brouillon ou déjà envoyé peut être envoyé par e-mail." };
   }
 
-  const to = await resolveQuoteRecipientEmail(supabase, {
-    sourceLeadId: proj.sourceLeadId as string | null | undefined,
-    clientEmail: proj.clientEmail as string | null | undefined,
-  });
+  // Devis lié à une demande : on résout directement depuis le lead.
+  // Devis lié à un chantier : on résout via le chantier.
+  let to: string | null = null;
+  if (q.leadId) {
+    const { data: lead } = await supabase.from("ProLead").select("id,siren").eq("id", q.leadId as string).maybeSingle();
+    if (!lead || (lead.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+    to = await resolveRecipientEmailFromLeadId(supabase, q.leadId);
+  }
+  if (!to) {
+    if (!qProjectId) {
+      return {
+        ok: false,
+        error: "Ce devis n’est rattaché à aucun chantier et aucune demande : impossible d’identifier le destinataire.",
+      };
+    }
+    const { data: proj } = await supabase.from("ProProject").select("id,siren,clientName,sourceLeadId,clientEmail").eq("id", qProjectId).maybeSingle();
+    if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+    to = await resolveQuoteRecipientEmail(supabase, {
+      sourceLeadId: proj.sourceLeadId as string | null | undefined,
+      clientEmail: proj.clientEmail as string | null | undefined,
+    });
+  }
   if (!to) {
     return {
       ok: false,
@@ -440,15 +601,27 @@ export async function sendQuoteToClientAction(
   const { data: ap } = await supabase
     .from("ArtisanProfile")
     .select("vitrineHeadline,siren")
-    .eq("siren", proj.siren as string)
+    .eq("siren", ctx.artisanProfile!.siren)
     .maybeSingle();
   const headline = typeof ap?.vitrineHeadline === "string" ? ap.vitrineHeadline.trim() : "";
-  const artisanLabel = headline.length > 0 ? headline : `Artisan (SIREN ${proj.siren as string})`;
+  const artisanLabel = headline.length > 0 ? headline : `Artisan (SIREN ${ctx.artisanProfile!.siren})`;
+
+  let clientName: string | null = null;
+  if (q.leadId) {
+    const { data: lead } = await supabase.from("ProLead").select("fullName").eq("id", q.leadId as string).maybeSingle();
+    const n = typeof lead?.fullName === "string" ? lead.fullName.trim() : "";
+    clientName = n.length > 0 ? n : null;
+  } else if (qProjectId) {
+    const { data: proj2 } = await supabase.from("ProProject").select("clientName,siren").eq("id", qProjectId).maybeSingle();
+    if (!proj2 || (proj2.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
+    const n = typeof proj2.clientName === "string" ? proj2.clientName.trim() : "";
+    clientName = n.length > 0 ? n : null;
+  }
 
   const sent = await sendProQuoteToClientEmail({
     to,
     artisanLabel,
-    clientName: typeof proj.clientName === "string" ? proj.clientName.trim() : null,
+    clientName,
     quoteNumber: String(q.number ?? "—"),
     totalCents: typeof q.totalCents === "number" ? q.totalCents : 0,
     linesJson: q.linesJson,
@@ -468,7 +641,87 @@ export async function sendQuoteToClientAction(
     .eq("id", quoteId);
   if (upErr) return { ok: false, error: "Mise à jour du devis impossible." };
 
-  revalidatePath(`/pro/chantiers/${projectId}`);
+  await markLeadInProgressAfterQuoteSent(supabase, {
+    leadId: q.leadId as string | null | undefined,
+    projectId: qProjectId,
+    siren: ctx.artisanProfile!.siren,
+  });
+
+  if (qProjectId) revalidatePath(`/pro/chantiers/${qProjectId}`);
+  if (q.leadId) revalidatePath("/pro/demandes");
+  revalidatePath("/pro/tableau");
+  return { ok: true };
+}
+
+/** Passe le devis en refus (CANCELLED) ou archivé sans suite (ARCHIVED) — uniquement brouillon ou envoyé, pas commande/facturé. */
+export async function closeQuoteAsCancelledOrArchivedAction(
+  _prev: { ok: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await requireProContext();
+  requirePilotage(ctx);
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  const projectIdForm = String(formData.get("projectId") ?? "").trim() || null;
+  const outcome = String(formData.get("outcome") ?? "").trim();
+  if (!quoteId) return { ok: false, error: "Devis invalide." };
+  if (outcome !== "CANCELLED" && outcome !== "ARCHIVED") {
+    return { ok: false, error: "Type de clôture invalide." };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: q } = await supabase
+    .from("ProQuote")
+    .select("id,projectId,leadId,status")
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (!q) return { ok: false, error: "Devis introuvable." };
+
+  const qProjectId = (q.projectId as string | null | undefined) ?? null;
+  if (qProjectId && projectIdForm && qProjectId !== projectIdForm) {
+    return { ok: false, error: "Devis introuvable." };
+  }
+
+  const siren = ctx.artisanProfile!.siren;
+  if (qProjectId) {
+    const { data: proj } = await supabase.from("ProProject").select("siren").eq("id", qProjectId).maybeSingle();
+    if (!proj || (proj.siren as string) !== siren) return { ok: false, error: "Accès refusé." };
+  } else if (q.leadId) {
+    const { data: lead } = await supabase.from("ProLead").select("siren").eq("id", q.leadId as string).maybeSingle();
+    if (!lead || (lead.siren as string) !== siren) return { ok: false, error: "Accès refusé." };
+  } else {
+    return { ok: false, error: "Devis non rattaché à un chantier ni à une demande." };
+  }
+
+  const st = String(q.status ?? "DRAFT");
+  if (st === "ACCEPTED" || st === "INVOICED") {
+    return {
+      ok: false,
+      error: "Commande ou facturation en cours : utilise le chantier pour gérer ce dossier, ou contacte le support.",
+    };
+  }
+  if (st === "CANCELLED" || st === "ARCHIVED") {
+    return { ok: false, error: "Ce devis est déjà classé." };
+  }
+  if (st !== "DRAFT" && st !== "SENT") {
+    return { ok: false, error: "Ce statut de devis ne peut pas être clôturé ainsi." };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("ProQuote").update({ status: outcome, updatedAt: now }).eq("id", quoteId);
+  if (error) return { ok: false, error: "Mise à jour impossible." };
+
+  if (outcome === "ARCHIVED") {
+    await archiveLeadFromQuoteBinding(supabase, {
+      leadId: q.leadId as string | null | undefined,
+      projectId: qProjectId,
+      siren: siren,
+    });
+  }
+
+  if (qProjectId) revalidatePath(`/pro/chantiers/${qProjectId}`);
+  if (q.leadId) revalidatePath("/pro/demandes");
+  revalidatePath("/pro/chantiers");
+  revalidatePath("/pro/tableau");
   return { ok: true };
 }
 
@@ -486,7 +739,11 @@ export async function acceptQuoteAsOrderAction(
   const { data: proj } = await supabase.from("ProProject").select("siren").eq("id", projectId).maybeSingle();
   if (!proj || (proj.siren as string) !== ctx.artisanProfile!.siren) return { ok: false, error: "Accès refusé." };
 
-  const { data: q } = await supabase.from("ProQuote").select("id,projectId,status").eq("id", quoteId).maybeSingle();
+  const { data: q } = await supabase
+    .from("ProQuote")
+    .select("id,projectId,leadId,status")
+    .eq("id", quoteId)
+    .maybeSingle();
   if (!q || (q.projectId as string) !== projectId) return { ok: false, error: "Devis introuvable." };
   if ((q.status as string) !== "SENT") {
     return { ok: false, error: "Le devis doit d’abord être envoyé au client, puis marqué comme accepté (commande)." };
@@ -498,7 +755,16 @@ export async function acceptQuoteAsOrderAction(
     .update({ status: "ACCEPTED", acceptedAt: now, updatedAt: now })
     .eq("id", quoteId);
   if (error) return { ok: false, error: "Mise à jour impossible." };
+
+  await archiveLeadFromQuoteBinding(supabase, {
+    leadId: q.leadId as string | null | undefined,
+    projectId,
+    siren: ctx.artisanProfile!.siren,
+  });
+
   revalidatePath(`/pro/chantiers/${projectId}`);
+  revalidatePath("/pro/demandes");
+  revalidatePath("/pro/tableau");
   return { ok: true };
 }
 

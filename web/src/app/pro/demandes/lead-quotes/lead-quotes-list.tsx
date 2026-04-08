@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 
+import { QuoteLinesPreview } from "@/components/quote-lines-preview";
 import { QuoteCloseForms } from "@/app/pro/chantiers/quote-close-forms";
 import { sendQuoteToClientAction } from "@/app/pro/chantiers/pilotage.actions";
 import { acceptLeadQuoteAsOrderAction, openOrAttachChantierForLeadOrderAction } from "./lead-quotes.actions";
@@ -10,6 +11,24 @@ import { acceptLeadQuoteAsOrderAction, openOrAttachChantierForLeadOrderAction } 
 function eur(totalCents: number): string {
   const v = Math.max(0, Number.isFinite(totalCents) ? totalCents : 0);
   return (v / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+}
+
+function quoteSourceBadge(source: string | null | undefined): { label: string; className: string } | null {
+  const s = source || "MANUAL";
+  if (s === "LEAD") {
+    return {
+      label: "Depuis demande (brouillon IA possible)",
+      className:
+        "bg-violet-500/15 text-violet-900 ring-violet-500/30 dark:bg-violet-500/20 dark:text-violet-100 dark:ring-violet-400/30",
+    };
+  }
+  if (s === "MANUAL") {
+    return {
+      label: "Devis manuel",
+      className: "bg-slate-500/10 text-slate-700 ring-slate-400/25 dark:text-slate-200 dark:ring-white/15",
+    };
+  }
+  return null;
 }
 
 function labelStatus(s: string): string {
@@ -102,7 +121,9 @@ export function LeadQuotesList({
     projectId: string | null;
     number: string;
     status: string;
+    source?: string;
     totalCents: number;
+    linesJson: unknown;
     sentAt: string | null;
     acceptedAt: string | null;
     createdAt: string;
@@ -124,11 +145,20 @@ export function LeadQuotesList({
 
       {quotes.length > 0 ? (
         <ul className="mt-4 space-y-3">
-          {quotes.map((q) => (
+          {quotes.map((q) => {
+            const src = quoteSourceBadge(q.source);
+            return (
             <li key={q.id} className="rounded-xl border border-ink/10 bg-canvas/50 p-4 dark:border-white/10 dark:bg-canvas-muted/25">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-[14rem]">
-                  <p className="font-mono text-xs text-ink-soft">#{q.number}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-mono text-xs text-ink-soft">#{q.number}</p>
+                    {src ? (
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${src.className}`}>
+                        {src.label}
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="mt-1 text-sm font-semibold text-ink">
                     {eur(q.totalCents)}{" "}
                     <span className="ml-2 rounded-full bg-slate-900/5 px-2 py-0.5 text-[11px] font-semibold text-slate-900 dark:bg-white/10 dark:text-white">
@@ -148,11 +178,15 @@ export function LeadQuotesList({
                   ) : null}
                 </div>
               </div>
+              <div className="mt-2">
+                <QuoteLinesPreview linesJson={q.linesJson} defaultOpen={q.status === "DRAFT"} />
+              </div>
               {q.status === "DRAFT" || q.status === "SENT" ? (
                 <QuoteCloseForms quoteId={q.id} projectId={q.projectId} />
               ) : null}
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : null}
     </section>

@@ -121,7 +121,9 @@ export default async function ProDemandesPage({
       projectId: string | null;
       number: string;
       status: string;
+      source: string;
       totalCents: number;
+      linesJson: unknown;
       sentAt: string | null;
       acceptedAt: string | null;
       createdAt: string;
@@ -137,7 +139,7 @@ export default async function ProDemandesPage({
       supabase.from("ProLeadAttachment").select("id,leadId,storagePath,sortOrder").in("leadId", leadIds),
       supabase
         .from("ProQuote")
-        .select("id,leadId,projectId,number,status,totalCents,sentAt,acceptedAt,createdAt")
+        .select("id,leadId,projectId,number,status,source,totalCents,linesJson,sentAt,acceptedAt,createdAt")
         .in("leadId", leadIds)
         .order("createdAt", { ascending: false }),
     ]);
@@ -176,7 +178,9 @@ export default async function ProDemandesPage({
           projectId: typeof row.projectId === "string" ? row.projectId : null,
           number: String(row.number ?? "—"),
           status: String(row.status ?? "DRAFT"),
+          source: typeof row.source === "string" ? row.source : "LEAD",
           totalCents: typeof row.totalCents === "number" ? row.totalCents : 0,
+          linesJson: row.linesJson ?? null,
           sentAt: typeof row.sentAt === "string" ? row.sentAt : null,
           acceptedAt: typeof row.acceptedAt === "string" ? row.acceptedAt : null,
           createdAt: String(row.createdAt ?? ""),

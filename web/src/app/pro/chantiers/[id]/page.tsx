@@ -9,6 +9,7 @@ import { isProCatalogKind, type ProCatalogKind } from "@/lib/pro-catalog-kinds";
 import type { ProCatalogPickerItem } from "@/lib/pro-catalog-types";
 import { resolveQuoteRecipientEmail } from "@/lib/pro-quote-recipient";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { QuoteLinesPreview } from "@/components/quote-lines-preview";
 import { ChantierTabsNav, parseChantierTab, type ChantierTabId } from "./chantier-tabs-nav";
 import { ClientEmailForm } from "./client-email-form";
 import { QuoteCreateForm } from "./quote-create-form";
@@ -413,6 +414,9 @@ export default async function ProChantierDetailPage({
                           Émis : {fmtDate((q.issuedAt as string | null) ?? null)}
                           {(q.sentAt as string | null) ? ` · Envoyé : ${fmtDate(q.sentAt as string)}` : ""}
                         </p>
+                        <div className="mt-2">
+                          <QuoteLinesPreview linesJson={q.linesJson} defaultOpen={st === "DRAFT"} />
+                        </div>
                         <QuoteDevisWorkflow projectId={id} quoteId={qid} status={st} />
                       </li>
                     );
@@ -473,6 +477,9 @@ export default async function ProChantierDetailPage({
                             </>
                           ) : null}
                         </p>
+                        <div className="mt-2">
+                          <QuoteLinesPreview linesJson={q.linesJson} />
+                        </div>
                         <QuoteCommandeWorkflow projectId={id} quoteId={qid} status={st} />
                       </li>
                     );
